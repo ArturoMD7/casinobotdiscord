@@ -151,7 +151,7 @@ class RuletaRusa(commands.Cog):
             embed_muerte.add_field(name="🔫 RONDA", value=f"**{juego['ronda_actual']}**", inline=True)
             embed_muerte.add_field(name="💰 PÉRDIDA", value=f"**-{juego['apuesta_base']:,}** créditos", inline=True)
             embed_muerte.add_field(name="💳 BALANCE NUEVO", value=f"**{db.get_credits(user_id):,}** créditos", inline=False)
-            embed_muerte.set_image(url="https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif")
+            embed_muerte.set_image(url="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTJzNTFucmZvZ2FoY3JzZ2k3Mm1kYjMxMnlneG1kNjJva2docm5peSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/OY9XK7PbFqkNO/giphy.gif")
             embed_muerte.set_footer(text="La muerte no tiene prisa... siempre te espera.")
             
             await interaction.edit_original_response(embed=embed_muerte)
@@ -190,7 +190,7 @@ class RuletaRusa(commands.Cog):
                 embed_victoria_total.add_field(name="💰 GANANCIA TOTAL", value=f"**+{ganancia:,}** créditos 🎊", inline=True)
                 embed_victoria_total.add_field(name="🎯 MULTIPLICADOR FINAL", value=f"**x10**", inline=True)
                 embed_victoria_total.add_field(name="💳 BALANCE NUEVO", value=f"**{db.get_credits(user_id):,}** créditos 💰", inline=False)
-                embed_victoria_total.set_image(url="https://media.giphy.com/media/3o7aD2s2fSrLcMaZEs/giphy.gif")
+                embed_victoria_total.set_image(url="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjZjejQ2MHR5bGt4cmo2NDZyZXBnd3R3eGNrM3cwbjRvYW8xb2p3MSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/YBsd8wdchmxqg/giphy.gif")
                 embed_victoria_total.set_footer(text="¡Eres inmortal!... por ahora.")
                 
                 await interaction.edit_original_response(embed=embed_victoria_total)

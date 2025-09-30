@@ -9,52 +9,56 @@ db = Database()
 games = {}
 
 class BlackjackView(View):
-    def __init__(self, game, user_id, author_name):
-        super().__init__(timeout=60.0)  # 60 segundos de timeout
+    def __init__(self, game, user_id, author_name, message_id):
+        super().__init__(timeout=60.0)
         self.game = game
         self.user_id = user_id
         self.author_name = author_name
+        self.message_id = message_id
         self.update_buttons_state()
     
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        # Solo el usuario que inició el juego puede usar los botones
-        return interaction.user.id == self.user_id
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                f"❌ Esta partida de Blackjack pertenece a <@{self.user_id}>. "
+                f"Usa `!blackjack <apuesta>` para iniciar tu propia partida.",
+                ephemeral=True
+            )
+            return False
+        return True
     
     async def on_timeout(self):
-        # Limpiar el juego si se acaba el tiempo
-        if self.user_id in games:
-            game = games[self.user_id]
+        game_key = f"{self.user_id}_{self.message_id}"
+        if game_key in games:
+            game = games[game_key]
             if not game.finished:
-                # Si el juego no terminó, cobrar la apuesta
                 db.update_credits(self.user_id, -game.bet, "loss", "blackjack", "Timeout")
-            del games[self.user_id]
+            del games[game_key]
     
     def update_buttons_state(self):
         """Actualiza el estado de todos los botones basado en el juego actual"""
-        if self.user_id not in games:
+        game_key = f"{self.user_id}_{self.message_id}"
+        if game_key not in games:
             return
         
-        game = games[self.user_id]
+        game = games[game_key]
         state = game.get_game_state()
         
-        # Actualizar cada botón
         for item in self.children:
             if item.custom_id == "double":
-                # Doblar solo disponible en primera jugada con 2 cartas
                 item.disabled = not state["can_double"]
             elif item.custom_id == "surrender":
-                # Rendirse solo disponible en primera jugada
                 item.disabled = len(game.player_hand) > 2
             elif item.custom_id == "hit":
-                # Pedir siempre disponible a menos que el juego termine
                 item.disabled = state["finished"]
             elif item.custom_id == "stand":
-                # Plantarse siempre disponible a menos que el juego termine
                 item.disabled = state["finished"]
 
     @discord.ui.button(label="📥 Pedir", style=discord.ButtonStyle.primary, custom_id="hit")
     async def hit_button(self, interaction: discord.Interaction, button: Button):
-        game = games.get(self.user_id)
+        game_key = f"{self.user_id}_{self.message_id}"
+        game = games.get(game_key)
+        
         if not game or game.finished:
             await interaction.response.send_message("❌ Esta partida ya terminó.", ephemeral=True)
             return
@@ -65,20 +69,21 @@ class BlackjackView(View):
         if finished:
             db.update_credits(self.user_id, game.payout, "loss" if game.payout < 0 else "win", "blackjack", f"Blackjack: {result}")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[self.user_id]
+            del games[game_key]
             
             embed = self.create_game_embed(state, "💥 Te has pasado!")
             embed.add_field(name="Resultado", value=f"Has perdido {abs(game.payout):,} créditos", inline=False)
             await interaction.response.edit_message(embed=embed, view=None)
         else:
-            # Actualizar estado de botones después de pedir
             self.update_buttons_state()
             embed = self.create_game_embed(state, "📥 Has pedido carta")
             await interaction.response.edit_message(embed=embed, view=self)
     
     @discord.ui.button(label="🛑 Plantarse", style=discord.ButtonStyle.success, custom_id="stand")
     async def stand_button(self, interaction: discord.Interaction, button: Button):
-        game = games.get(self.user_id)
+        game_key = f"{self.user_id}_{self.message_id}"
+        game = games.get(game_key)
+        
         if not game or game.finished:
             await interaction.response.send_message("❌ Esta partida ya terminó.", ephemeral=True)
             return
@@ -86,10 +91,9 @@ class BlackjackView(View):
         result = game.player_stand()
         state = game.get_game_state()
         
-        # Procesar resultado
         db.update_credits(self.user_id, game.payout, "win" if game.payout > 0 else "loss" if game.payout < 0 else "draw", "blackjack", f"Blackjack: {result}")
         db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-        del games[self.user_id]
+        del games[game_key]
         
         result_text = self.get_result_text(game)
         
@@ -99,12 +103,13 @@ class BlackjackView(View):
     
     @discord.ui.button(label="💰 Doblar", style=discord.ButtonStyle.danger, custom_id="double")
     async def double_button(self, interaction: discord.Interaction, button: Button):
-        game = games.get(self.user_id)
+        game_key = f"{self.user_id}_{self.message_id}"
+        game = games.get(game_key)
+        
         if not game:
             await interaction.response.send_message("❌ No tienes una partida en curso.", ephemeral=True)
             return
         
-        # Verificar si puede doblar
         if not game.can_double():
             await interaction.response.send_message("❌ Solo puedes doblar en tu primera jugada con 2 cartas.", ephemeral=True)
             return
@@ -114,26 +119,24 @@ class BlackjackView(View):
             await interaction.response.send_message("❌ No tienes suficientes créditos para doblar.", ephemeral=True)
             return
         
-        # Ejecutar double down
         result, value = game.player_double_down()
         state = game.get_game_state()
         
         if result == "bust":
             db.update_credits(self.user_id, game.payout, "loss", "blackjack", "Blackjack: double bust")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[self.user_id]
+            del games[game_key]
             
             embed = self.create_game_embed(state, "💥 Te has pasado!")
             embed.add_field(name="Resultado", value=f"Has perdido {abs(game.payout):,} créditos", inline=False)
             await interaction.response.edit_message(embed=embed, view=None)
         else:
-            # Después de doblar, la partida termina automáticamente
             result = game.player_stand()
             state = game.get_game_state()
             
             db.update_credits(self.user_id, game.payout, "win" if game.payout > 0 else "loss", "blackjack", f"Blackjack: double {result}")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[self.user_id]
+            del games[game_key]
             
             result_text = self.get_result_text(game)
             embed = self.create_game_embed(state, "🏁 Partida Terminada - Doble Apuesta")
@@ -142,7 +145,9 @@ class BlackjackView(View):
     
     @discord.ui.button(label="🏳️ Rendirse", style=discord.ButtonStyle.secondary, custom_id="surrender")
     async def surrender_button(self, interaction: discord.Interaction, button: Button):
-        game = games.get(self.user_id)
+        game_key = f"{self.user_id}_{self.message_id}"
+        game = games.get(game_key)
+        
         if not game:
             await interaction.response.send_message("❌ No tienes una partida en curso.", ephemeral=True)
             return
@@ -154,7 +159,7 @@ class BlackjackView(View):
         refund = game.bet // 2
         db.update_credits(self.user_id, -refund, "loss", "blackjack", "Blackjack: surrender")
         db.save_blackjack_game(self.user_id, game.bet, "surrender", -refund, game.player_hand, game.dealer_hand)
-        del games[self.user_id]
+        del games[game_key]
         
         await interaction.response.edit_message(
             content=f"🏳️ {interaction.user.mention} te has rendido. Recuperas **{refund}** créditos de tu apuesta de {game.bet}.",
@@ -167,17 +172,21 @@ class BlackjackView(View):
             title=f"🎰 {title}",
             color=discord.Color.gold()
         )
+
+        embed.add_field(
+            name="👤 Jugador",
+            value=f"<@{self.user_id}>",
+            inline=True
+        )
         
-        # Mano del jugador
         player_hand_str = " ".join(state["player_hand"])
         soft_text = " (soft)" if state["player_soft"] else ""
         embed.add_field(
-            name=f"👤 Tu mano ({state['player_value']}{soft_text})",
+            name=f"📋 Tu mano ({state['player_value']}{soft_text})",
             value=player_hand_str,
             inline=False
         )
         
-        # Mano de la banca
         dealer_hand_str = " ".join(state["dealer_hand"])
         if state["finished"]:
             dealer_soft_text = " (soft)" if state["dealer_soft"] else ""
@@ -191,14 +200,12 @@ class BlackjackView(View):
             inline=False
         )
         
-        # Información de la apuesta
         embed.add_field(
             name="💰 Apuesta",
             value=f"{state['bet']:,} créditos",
             inline=True
         )
         
-        # Mostrar acciones disponibles
         if not state["finished"]:
             actions = []
             if state["can_double"]:
@@ -236,8 +243,9 @@ class Blackjack(commands.Cog):
         user_id = ctx.author.id
         
         # Verificar si ya tiene una partida en curso
-        if user_id in games:
-            await ctx.send("❌ Ya tienes una partida de Blackjack en curso.")
+        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
+        if user_active_games:
+            await ctx.send("❌ Ya tienes una partida de Blackjack en curso. Termina tu partida actual antes de empezar otra.")
             return
         
         # Validar apuesta
@@ -265,26 +273,35 @@ class Blackjack(commands.Cog):
         
         # Crear nueva partida
         game = BlackjackGame(bet, user_id)
-        games[user_id] = game
         
+        # Enviar mensaje primero para obtener el ID
         state = game.get_game_state()
-        view = BlackjackView(game, user_id, ctx.author.display_name)
+        view = BlackjackView(game, user_id, ctx.author.display_name, "temp")
         
         embed = view.create_game_embed(state, "Nueva Partida de Blackjack")
-        await ctx.send(embed=embed, view=view)
+        message = await ctx.send(embed=embed, view=view)
+        
+        # Actualizar el view con el message_id real y guardar el juego
+        view.message_id = message.id
+        game_key = f"{user_id}_{message.id}"
+        games[game_key] = game
 
-    # Mantener comandos de texto como alternativa
     @commands.command(name="pedir", aliases=["hit"])
     async def hit(self, ctx):
         """Pide una carta (comando de texto alternativo)"""
         user_id = ctx.author.id
-        game = games.get(user_id)
         
-        if not game:
+        # Buscar partida activa del usuario
+        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
+        if not user_active_games:
             await ctx.send("❌ No tienes una partida de Blackjack en curso. Usa `!blackjack <apuesta>` para empezar.")
             return
         
-        if game.finished:
+        # Tomar la primera partida activa (en caso de múltiples)
+        game_key = user_active_games[0]
+        game = games.get(game_key)
+        
+        if not game or game.finished:
             await ctx.send("❌ Esta partida ya ha terminado.")
             return
         
@@ -294,7 +311,7 @@ class Blackjack(commands.Cog):
         if finished:
             db.update_credits(user_id, game.payout, "loss" if game.payout < 0 else "win", "blackjack", f"Blackjack: {result}")
             db.save_blackjack_game(user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[user_id]
+            del games[game_key]
             
             embed = discord.Embed(title="💥 Te has pasado!", color=discord.Color.red())
             embed.add_field(name="Tus cartas", value=f"{game.player_hand} ({value})", inline=False)
@@ -309,13 +326,17 @@ class Blackjack(commands.Cog):
     async def stand(self, ctx):
         """Te plantas con tu mano actual (comando de texto alternativo)"""
         user_id = ctx.author.id
-        game = games.get(user_id)
         
-        if not game:
+        # Buscar partida activa del usuario
+        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
+        if not user_active_games:
             await ctx.send("❌ No tienes una partida de Blackjack en curso. Usa `!blackjack <apuesta>` para empezar.")
             return
         
-        if game.finished:
+        game_key = user_active_games[0]
+        game = games.get(game_key)
+        
+        if not game or game.finished:
             await ctx.send("❌ Esta partida ya ha terminado.")
             return
         
@@ -325,7 +346,7 @@ class Blackjack(commands.Cog):
         # Procesar resultado
         db.update_credits(user_id, game.payout, "win" if game.payout > 0 else "loss" if game.payout < 0 else "draw", "blackjack", f"Blackjack: {result}")
         db.save_blackjack_game(user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-        del games[user_id]
+        del games[game_key]
         
         result_text = ""
         if game.result == "blackjack":
@@ -348,11 +369,15 @@ class Blackjack(commands.Cog):
     async def double(self, ctx):
         """Dobla tu apuesta (comando de texto alternativo)"""
         user_id = ctx.author.id
-        game = games.get(user_id)
         
-        if not game:
+        # Buscar partida activa del usuario
+        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
+        if not user_active_games:
             await ctx.send("❌ No tienes una partida de Blackjack en curso.")
             return
+        
+        game_key = user_active_games[0]
+        game = games.get(game_key)
         
         credits = db.get_credits(user_id)
         if game.bet * 2 > credits:
@@ -369,7 +394,7 @@ class Blackjack(commands.Cog):
         if result == "bust":
             db.update_credits(user_id, game.payout, "loss", "blackjack", "Blackjack: double bust")
             db.save_blackjack_game(user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[user_id]
+            del games[game_key]
             
             embed = discord.Embed(title="💥 Te has pasado!", color=discord.Color.red())
             embed.add_field(name="Tus cartas", value=f"{game.player_hand} ({value})", inline=False)
@@ -381,7 +406,7 @@ class Blackjack(commands.Cog):
             
             db.update_credits(user_id, game.payout, "win" if game.payout > 0 else "loss", "blackjack", f"Blackjack: double {result}")
             db.save_blackjack_game(user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[user_id]
+            del games[game_key]
             
             result_text = ""
             if game.result == "blackjack":
@@ -404,11 +429,15 @@ class Blackjack(commands.Cog):
     async def surrender(self, ctx):
         """Te rindes (comando de texto alternativo)"""
         user_id = ctx.author.id
-        game = games.get(user_id)
         
-        if not game:
+        # Buscar partida activa del usuario
+        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
+        if not user_active_games:
             await ctx.send("❌ No tienes una partida de Blackjack en curso.")
             return
+        
+        game_key = user_active_games[0]
+        game = games.get(game_key)
         
         if len(game.player_hand) > 2:
             await ctx.send("❌ Solo puedes rendirte en tu primera jugada.")
@@ -417,9 +446,36 @@ class Blackjack(commands.Cog):
         refund = game.bet // 2
         db.update_credits(user_id, -refund, "loss", "blackjack", "Blackjack: surrender")
         db.save_blackjack_game(user_id, game.bet, "surrender", -refund, game.player_hand, game.dealer_hand)
-        del games[user_id]
+        del games[game_key]
         
         await ctx.send(f"🏳️ {ctx.author.mention} te has rendido. Recuperas **{refund}** créditos de tu apuesta de {game.bet}.")
+
+    @commands.command(name="blackjackstats", aliases=["bjstats"])
+    async def blackjackstats(self, ctx):
+        """Muestra estadísticas de blackjack activas"""
+        user_id = ctx.author.id
+        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
+        
+        if not user_active_games:
+            await ctx.send("❌ No tienes partidas de Blackjack activas.")
+            return
+        
+        embed = discord.Embed(
+            title="📊 Partidas de Blackjack Activas",
+            description=f"Tienes **{len(user_active_games)}** partida(s) activa(s)",
+            color=discord.Color.blue()
+        )
+        
+        for i, game_key in enumerate(user_active_games, 1):
+            game = games[game_key]
+            state = game.get_game_state()
+            embed.add_field(
+                name=f"Partida {i}",
+                value=f"Apuesta: {state['bet']:,} | Cartas: {len(state['player_hand'])} | Valor: {state['player_value']}",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Blackjack(bot))
