@@ -24,8 +24,9 @@ class RuletaRusa(commands.Cog):
             )
             embed.add_field(
                 name="💀 REGLAS DEL JUEGO", 
-                value="• 🔫 **6 cámaras, 1 bala**\n"
-                      "• 👤 **Turnos alternados** (jugador vs oponente)\n"
+                value="• 🔫 **6 cámaras, 1 bala** (posición fija)\n"
+                      "• 🔄 **Tambor gira después de cada disparo**\n"
+                      "• 👤 **Turnos alternados**\n"
                       "• 💰 **El ganador se lleva el bote completo**\n"
                       "• 🤖 **Puedes jugar contra la máquina o otros jugadores**", 
                 inline=False
@@ -33,49 +34,11 @@ class RuletaRusa(commands.Cog):
             embed.add_field(
                 name="🎯 MODOS DE JUEGO", 
                 value="• `!ruletarusa 1000` → vs Máquina 🤖\n"
-                      "• `!ruletarusa 1000 @usuario` → vs Jugador 👤\n"
-                      "• `!ruletarusa buscar` → Buscar partida aleatoria 🔍", 
+                      "• `!ruletarusa 1000 @usuario` → vs Jugador 👤", 
                 inline=False
             )
-            embed.add_field(
-                name="💰 PROBABILIDADES", 
-                value="• 🟢 **Sobrevivir primer turno:** 83.3%\n"
-                      "• 🔴 **Morir primer turno:** 16.7%\n"
-                      "• ⚖️ **Ventaja del primer jugador:** +8.3%", 
-                inline=True
-            )
-            embed.set_footer(text="En la ruleta rusa, no importa quién dispara primero... solo quién dispara último")
+            embed.set_footer(text="En un revólver real, la bala espera en una cámara... ¿en cuál?")
             await ctx.send(embed=embed)
-            return
-
-        # Modo búsqueda de partida
-        if isinstance(bet, str) and bet.lower() == "buscar":
-            if ctx.author.id in self.buscando_partida:
-                await ctx.send("❌ **Ya estás buscando partida.** Usa `!cancelar` para dejar de buscar.")
-                return
-            
-            self.buscando_partida[ctx.author.id] = {
-                'user': ctx.author,
-                'timestamp': ctx.message.created_at
-            }
-            
-            embed = discord.Embed(
-                title="🔍 BUSCANDO OPONENTE...",
-                description=f"**{ctx.author.mention} está buscando rival para la ruleta rusa**",
-                color=0xffff00
-            )
-            embed.add_field(name="⏰ TIEMPO", value="Buscando por 60 segundos...", inline=True)
-            embed.add_field(name="🎯 MODO", value="Apuesta automática: **500 créditos**", inline=True)
-            embed.set_footer(text="Usa !cancelar para dejar de buscar")
-            
-            await ctx.send(embed=embed)
-            
-            # Esperar 60 segundos por un oponente
-            await asyncio.sleep(60)
-            
-            if ctx.author.id in self.buscando_partida:
-                del self.buscando_partida[ctx.author.id]
-                await ctx.send(f"❌ **{ctx.author.mention} No se encontró oponente en 60 segundos.**")
             return
 
         if bet < 100:
@@ -114,14 +77,17 @@ class RuletaRusa(commands.Cog):
         """Inicia un juego contra la máquina"""
         user_id = ctx.author.id
         
-        # Inicializar juego vs máquina
+        # Inicializar juego vs máquina - Bala en posición fija
+        bala_posicion = random.randint(1, 6)
+        
         self.juegos_activos[user_id] = {
             'tipo': 'maquina',
             'jugador1': ctx.author,
             'apuesta': bet,
-            'cámaras_restantes': 6,
-            'bala_posicion': random.randint(1, 6),
-            'turno_actual': 'jugador',  # jugador o maquina
+            'cámaras_totales': 6,
+            'posición_actual': 1,  # Por dónde va el tambor
+            'bala_posicion': bala_posicion,  # Posición FIJA de la bala
+            'turno_actual': 'jugador',
             'ronda': 1,
             'mensaje_inicial': None
         }
@@ -134,14 +100,13 @@ class RuletaRusa(commands.Cog):
         # Mensaje de inicio
         embed = discord.Embed(
             title="🤖 RULETA RUSA vs MÁQUINA",
-            description=f"**{ctx.author.mention} se enfrenta a la máquina**",
+            description=f"**{ctx.author.mention} se enfrenta a la máquina**\n*La bala está cargada en una de las 6 cámaras...*",
             color=0xff9900
         )
         embed.add_field(name="💰 APUESTA TOTAL", value=f"**{bet*2:,}** créditos", inline=True)
-        embed.add_field(name="🎯 CÁMARAS", value=f"**{juego['cámaras_restantes']}** restantes", inline=True)
+        embed.add_field(name="🎯 CÁMARAS", value=f"**6** cámaras, **1** bala", inline=True)
         embed.add_field(name="🔫 PRIMER TURNO", value="**Jugador** 🎯", inline=True)
-        embed.add_field(name="💀 BALA ACTIVA", value="**1** en el revólver", inline=True)
-        embed.add_field(name="📊 PROBABILIDAD", value=f"**{int((juego['cámaras_restantes']-1)/juego['cámaras_restantes']*100)}%** de sobrevivir", inline=True)
+        embed.add_field(name="📊 PROBABILIDAD INICIAL", value=f"**{int(5/6*100)}%** de sobrevivir", inline=True)
         
         view = self.crear_vista_disparo(user_id)
         mensaje = await ctx.send(embed=embed, view=view)
@@ -153,7 +118,7 @@ class RuletaRusa(commands.Cog):
         oponente_id = oponente.id
 
         # Verificar si el oponente está disponible
-        if oponente_id in self.juegos_activos or oponente_id in self.buscando_partida:
+        if oponente_id in self.juegos_activos:
             await ctx.send("❌ **El oponente seleccionado ya está en un juego.**")
             return
 
@@ -166,7 +131,7 @@ class RuletaRusa(commands.Cog):
         # Enviar invitación
         embed_invitacion = discord.Embed(
             title="🎯 INVITACIÓN A RULETA RUSA",
-            description=f"**{ctx.author.mention} te reta a un duelo mortal**",
+            description=f"**{ctx.author.mention} te reta a un duelo mortal**\n*6 cámaras, 1 bala... ¿quién sobrevivirá?*",
             color=0xffff00
         )
         embed_invitacion.add_field(name="💰 APUESTA", value=f"**{bet:,}** créditos cada uno", inline=True)
@@ -198,15 +163,19 @@ class RuletaRusa(commands.Cog):
                     )
                     return
 
+                # Bala en posición fija
+                bala_posicion = random.randint(1, 6)
+                
                 # Inicializar juego PvP
                 self.cog.juegos_activos[self.retador.id] = {
                     'tipo': 'pvp',
                     'jugador1': self.retador,
                     'jugador2': self.oponente,
                     'apuesta': self.bet,
-                    'cámaras_restantes': 6,
-                    'bala_posicion': random.randint(1, 6),
-                    'turno_actual': 'jugador1',  # Alterna entre jugador1 y jugador2
+                    'cámaras_totales': 6,
+                    'posición_actual': 1,
+                    'bala_posicion': bala_posicion,
+                    'turno_actual': 'jugador1',
                     'ronda': 1,
                     'mensaje_inicial': None
                 }
@@ -219,22 +188,20 @@ class RuletaRusa(commands.Cog):
 
                 # Mensaje de inicio del juego
                 embed = discord.Embed(
-                    title="⚔️ RULETA Rusa PvP",
-                    description=f"**{self.retador.mention} vs {self.oponente.mention}**",
+                    title="⚔️ RULETA RUSA PvP",
+                    description=f"**{self.retador.mention} vs {self.oponente.mention}**\n*La bala está cargada...*",
                     color=0xff0000
                 )
                 embed.add_field(name="💰 BOTE TOTAL", value=f"**{self.bet*2:,}** créditos", inline=True)
-                embed.add_field(name="🎯 CÁMARAS", value=f"**{juego['cámaras_restantes']}** restantes", inline=True)
-                embed.add_field(name="🔫 PRIMER TURNO", value=f"**{self.retador.display_name}** 🎯", inline=True)
-                embed.add_field(name="💀 BALA ACTIVA", value="**1** en el revólver", inline=True)
-
+                embed.add_field(name="🎯 CÁMARAS", value="**6** cámaras, **1** bala", inline=True)
+                
                 # Decidir aleatoriamente quién empieza
                 if random.choice([True, False]):
                     juego['turno_actual'] = 'jugador1'
-                    embed.add_field(name="🎲 TURNO ACTUAL", value=f"**{self.retador.display_name}**", inline=True)
+                    embed.add_field(name="🔫 PRIMER TURNO", value=f"**{self.retador.display_name}** 🎯", inline=True)
                 else:
                     juego['turno_actual'] = 'jugador2'
-                    embed.add_field(name="🎲 TURNO ACTUAL", value=f"**{self.oponente.display_name}**", inline=True)
+                    embed.add_field(name="🔫 PRIMER TURNO", value=f"**{self.oponente.display_name}** 🎯", inline=True)
 
                 view = self.cog.crear_vista_disparo(self.retador.id)
                 mensaje = await interaction.channel.send(embed=embed, view=view)
@@ -291,55 +258,154 @@ class RuletaRusa(commands.Cog):
                         await interaction.response.send_message("❌ No es tu turno.", ephemeral=True)
                         return
 
-                await self.cog.procesar_disparo(interaction, self.game_id)
+                await self.cog.procesar_disparo_jugador(interaction, self.game_id)
 
         return DisparoView(self, game_id)
 
-    async def procesar_disparo(self, interaction, game_id):
-        """Procesa un disparo en el juego"""
+    async def procesar_disparo_jugador(self, interaction, game_id):
+        """Procesa un disparo del jugador"""
         juego = self.juegos_activos[game_id]
         
-        # Animación de disparo
+        # Determinar jugador actual
         if juego['tipo'] == 'maquina':
             jugador_actual = juego['jugador1']
+            nombre_turno = jugador_actual.display_name
         else:
             turno_actual = juego['turno_actual']
             jugador_actual = juego[turno_actual]
+            nombre_turno = jugador_actual.display_name
 
+        # Animación de disparo
         embed_disparo = discord.Embed(
-            title=f"🔫 RONDA {juego['ronda']} - DISPARANDO...",
-            description=f"**{jugador_actual.mention} aprieta el gatillo...**",
+            title=f"🔫 {nombre_turno.upper()} DISPARA...",
+            description="*El tambor gira... el gatillo cede...* 💥",
             color=0xffff00
         )
-        embed_disparo.add_field(name="🎯 CÁMARAS RESTANTES", value=f"**{juego['cámaras_restantes']}**", inline=True)
+        embed_disparo.add_field(name="🎯 POSICIÓN ACTUAL", value=f"**Cámara {juego['posición_actual']}**", inline=True)
         embed_disparo.add_field(name="💰 BOTE", value=f"**{juego['apuesta']*2:,}** créditos", inline=True)
         await interaction.response.edit_message(embed=embed_disparo, view=None)
         
         await asyncio.sleep(2)
         
-        # Verificar si hay bala
-        cámara_actual = random.randint(1, juego['cámaras_restantes'])
-        hay_bala = cámara_actual == juego['bala_posicion']
+        # VERIFICAR SI HAY BALA (posición fija vs posición actual)
+        hay_bala = juego['posición_actual'] == juego['bala_posicion']
         
         if hay_bala:
-            # 💀 JUGADOR ACTUAL MUERE
+            # 💀 JUGADOR MUERE - BALA ENCONTRADA
             await self.procesar_muerte(interaction, game_id, jugador_actual)
         else:
-            # 🎉 SOBREVIVIÓ - Cambiar turno
-            juego['cámaras_restantes'] -= 1
+            # 🎉 JUGADOR SOBREVIVE - NO HABÍA BALA
             juego['ronda'] += 1
             
+            # GIRAR TAMBOR para siguiente disparo (posición avanza)
+            juego['posición_actual'] = (juego['posición_actual'] % 6) + 1
+            
+            embed_sobrevive = discord.Embed(
+                title="🎉 ¡SALVASTE! - CLICK...",
+                description=f"**{jugador_actual.mention} sobrevivió... esta vez.** ✅",
+                color=0x00ff00
+            )
+            embed_sobrevive.add_field(name="🔫 PRÓXIMA POSICIÓN", value=f"**Cámara {juego['posición_actual']}**", inline=True)
+            embed_sobrevive.add_field(name="💰 BOTE", value=f"**{juego['apuesta']*2:,}** créditos", inline=True)
+            embed_sobrevive.add_field(name="📅 RONDA", value=f"**{juego['ronda']}**", inline=True)
+            
+            await interaction.edit_original_response(embed=embed_sobrevive)
+            await asyncio.sleep(2)
+            
+            # Pasar al siguiente turno
             if juego['tipo'] == 'maquina':
                 juego['turno_actual'] = 'maquina'
-                await self.turno_maquina(interaction, game_id)
+                await self.procesar_turno_maquina(interaction, game_id)
             else:
                 # Cambiar turno en PvP
                 if juego['turno_actual'] == 'jugador1':
                     juego['turno_actual'] = 'jugador2'
+                    siguiente_jugador = juego['jugador2']
                 else:
                     juego['turno_actual'] = 'jugador1'
+                    siguiente_jugador = juego['jugador1']
                 
-                await self.mostrar_siguiente_turno(interaction, game_id)
+                await self.mostrar_siguiente_turno_pvp(interaction, game_id, siguiente_jugador)
+
+    async def procesar_turno_maquina(self, interaction, game_id):
+        """Procesa el turno de la máquina"""
+        juego = self.juegos_activos[game_id]
+        
+        embed = discord.Embed(
+            title="🤖 LA MÁQUINA DISPARA...",
+            description="*La máquina aprieta el gatillo...* 🤖",
+            color=0x666666
+        )
+        embed.add_field(name="🎯 POSICIÓN ACTUAL", value=f"**Cámara {juego['posición_actual']}**", inline=True)
+        embed.add_field(name="💰 BOTE", value=f"**{juego['apuesta']*2:,}** créditos", inline=True)
+        await interaction.edit_original_response(embed=embed)
+        await asyncio.sleep(2)
+        
+        # VERIFICAR SI HAY BALA (posición fija vs posición actual)
+        hay_bala = juego['posición_actual'] == juego['bala_posicion']
+        
+        if hay_bala:
+            # 💀 MÁQUINA MUERE - JUGADOR GANA
+            bote = juego['apuesta'] * 2
+            db.update_credits(juego['jugador1'].id, bote, "win", "ruletarusa", "Ganó vs máquina")
+            
+            embed_victoria = discord.Embed(
+                title="🎉 ¡BANG! ¡LA MÁQUINA MURIÓ!",
+                description=f"## **{juego['jugador1'].mention} GANA EL BOTE!** 🏆\n*La máquina encontró la bala...*",
+                color=0x00ff00
+            )
+            embed_victoria.add_field(name="💰 BOTE GANADO", value=f"**{bote:,}** créditos", inline=True)
+            embed_victoria.add_field(name="💳 BALANCE NUEVO", value=f"**{db.get_credits(juego['jugador1'].id):,}** créditos", inline=True)
+            embed_victoria.add_field(name="🎯 BALA ENCONTRADA", value=f"**Cámara {juego['bala_posicion']}**", inline=True)
+            embed_victoria.set_image(url="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjZjejQ2MHR5bGt4cmo2NDZyZXBnd3R3eGNrM3cwbjRvYW8xb2p3MSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/YBsd8wdchmxqg/giphy.gif")
+            
+            del self.juegos_activos[game_id]
+            await interaction.edit_original_response(embed=embed_victoria)
+        else:
+            # 🎉 MÁQUINA SOBREVIVE
+            juego['ronda'] += 1
+            juego['posición_actual'] = (juego['posición_actual'] % 6) + 1
+            
+            embed_sobrevive = discord.Embed(
+                title="🤖 MÁQUINA SOBREVIVE - CLICK...",
+                description="**La máquina sobrevivió... esta vez.** ✅",
+                color=0x666666
+            )
+            embed_sobrevive.add_field(name="🔫 PRÓXIMA POSICIÓN", value=f"**Cámara {juego['posición_actual']}**", inline=True)
+            embed_sobrevive.add_field(name="💰 BOTE", value=f"**{juego['apuesta']*2:,}** créditos", inline=True)
+            
+            await interaction.edit_original_response(embed=embed_sobrevive)
+            await asyncio.sleep(2)
+            
+            # Pasar al turno del jugador
+            juego['turno_actual'] = 'jugador'
+            embed_siguiente = discord.Embed(
+                title=f"🎯 TU TURNO {juego['jugador1'].display_name.upper()}",
+                description=f"**{juego['jugador1'].mention} es tu turno...** 🔫",
+                color=0xff9900
+            )
+            embed_siguiente.add_field(name="💰 BOTE", value=f"**{juego['apuesta']*2:,}** créditos", inline=True)
+            embed_siguiente.add_field(name="🎯 POSICIÓN ACTUAL", value=f"**Cámara {juego['posición_actual']}**", inline=True)
+            embed_siguiente.add_field(name="📊 PROBABILIDAD", value=f"**1 de 6** cámaras tiene la bala", inline=True)
+            
+            view = self.crear_vista_disparo(game_id)
+            await interaction.edit_original_response(embed=embed_siguiente, view=view)
+
+    async def mostrar_siguiente_turno_pvp(self, interaction, game_id, siguiente_jugador):
+        """Muestra el siguiente turno en PvP"""
+        juego = self.juegos_activos[game_id]
+        
+        embed = discord.Embed(
+            title=f"🎯 TURNO DE {siguiente_jugador.display_name.upper()}",
+            description=f"**{siguiente_jugador.mention} es tu turno...** 🔫",
+            color=0xff9900
+        )
+        embed.add_field(name="💰 BOTE", value=f"**{juego['apuesta']*2:,}** créditos", inline=True)
+        embed.add_field(name="🎯 POSICIÓN ACTUAL", value=f"**Cámara {juego['posición_actual']}**", inline=True)
+        embed.add_field(name="📊 PROBABILIDAD", value=f"**1 de 6** cámaras tiene la bala", inline=True)
+        
+        view = self.crear_vista_disparo(game_id)
+        await interaction.edit_original_response(embed=embed, view=view)
 
     async def procesar_muerte(self, interaction, game_id, jugador_muerto):
         """Procesa cuando un jugador muere"""
@@ -348,30 +414,29 @@ class RuletaRusa(commands.Cog):
         
         # Determinar ganador
         if juego['tipo'] == 'maquina':
-            # La máquina gana
-            ganador = "la máquina 🤖"
+            # La máquina gana (jugador pierde su apuesta)
             embed_muerte = discord.Embed(
                 title="💀 ¡BANG! ¡HAS MUERTO!",
-                description=f"## **{jugador_muerto.mention} PROBÓ SU SUERTE... Y PERDIÓ**\n\n**La máquina gana {bote:,} créditos**",
+                description=f"## **{jugador_muerto.mention} ENCONTRÓ LA BALA**\n*En la cámara {juego['bala_posicion']}...*\n\n**La máquina gana el bote** 🤖",
                 color=0xff0000
             )
         else:
             # PvP - El otro jugador gana
             if jugador_muerto.id == juego['jugador1'].id:
                 ganador = juego['jugador2']
-                db.update_credits(juego['jugador2'].id, bote, "win", "ruletarusa", f"Ganó vs {jugador_muerto}")
+                db.update_credits(ganador.id, bote, "win", "ruletarusa", f"Ganó vs {jugador_muerto}")
             else:
                 ganador = juego['jugador1']
-                db.update_credits(juego['jugador1'].id, bote, "win", "ruletarusa", f"Ganó vs {jugador_muerto}")
+                db.update_credits(ganador.id, bote, "win", "ruletarusa", f"Ganó vs {jugador_muerto}")
             
             embed_muerte = discord.Embed(
                 title="💀 ¡BANG! ¡JUGADOR ELIMINADO!",
-                description=f"## **{jugador_muerto.mention} encontró la bala...**\n\n**{ganador.mention} gana {bote:,} créditos!** 🎉",
+                description=f"## **{jugador_muerto.mention} ENCONTRÓ LA BALA**\n*En la cámara {juego['bala_posicion']}...*\n\n**{ganador.mention} GANA {bote:,} CRÉDITOS!** 🎉",
                 color=0xff0000
             )
 
-        embed_muerte.add_field(name="🔫 RONDA", value=f"**{juego['ronda']}**", inline=True)
         embed_muerte.add_field(name="💰 BOTE GANADO", value=f"**{bote:,}** créditos", inline=True)
+        embed_muerte.add_field(name="🎯 BALA ENCONTRADA", value=f"**Cámara {juego['bala_posicion']}**", inline=True)
         
         if juego['tipo'] == 'pvp':
             embed_muerte.add_field(name="🏆 GANADOR", value=f"{ganador.mention}", inline=True)
@@ -382,73 +447,6 @@ class RuletaRusa(commands.Cog):
         del self.juegos_activos[game_id]
         
         await interaction.edit_original_response(embed=embed_muerte)
-
-    async def turno_maquina(self, interaction, game_id):
-        """Procesa el turno de la máquina"""
-        juego = self.juegos_activos[game_id]
-        
-        embed = discord.Embed(
-            title="🤖 TURNO DE LA MÁQUINA",
-            description="**La máquina está pensando...**",
-            color=0x666666
-        )
-        await interaction.edit_original_response(embed=embed)
-        await asyncio.sleep(2)
-        
-        # La máquina siempre dispara
-        cámara_actual = random.randint(1, juego['cámaras_restantes'])
-        hay_bala = cámara_actual == juego['bala_posicion']
-        
-        if hay_bala:
-            # 💀 MÁQUINA MUERE - JUGADOR GANA
-            bote = juego['apuesta'] * 2
-            db.update_credits(juego['jugador1'].id, bote, "win", "ruletarusa", "Ganó vs máquina")
-            
-            embed_victoria = discord.Embed(
-                title="🎉 ¡LA MÁQUINA MURIÓ!",
-                description=f"## **{juego['jugador1'].mention} GANA EL BOTE!**\n\n**La máquina encontró la bala...**",
-                color=0x00ff00
-            )
-            embed_victoria.add_field(name="💰 BOTE GANADO", value=f"**{bote:,}** créditos", inline=True)
-            embed_victoria.add_field(name="💳 BALANCE NUEVO", value=f"**{db.get_credits(juego['jugador1'].id):,}** créditos", inline=True)
-            embed_victoria.set_image(url="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjZjejQ2MHR5bGt4cmo2NDZyZXBnd3R3eGNrM3cwbjRvYW8xb2p3MSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/YBsd8wdchmxqg/giphy.gif")
-            
-            del self.juegos_activos[game_id]
-            await interaction.edit_original_response(embed=embed_victoria)
-        else:
-            # 🎉 MÁQUINA SOBREVIVE - Siguiente turno del jugador
-            juego['cámaras_restantes'] -= 1
-            juego['ronda'] += 1
-            juego['turno_actual'] = 'jugador'
-            
-            embed_siguiente = discord.Embed(
-                title=f"🎉 MÁQUINA SOBREVIVE - RONDA {juego['ronda']}",
-                description=f"**La máquina sobrevivió... tu turno {juego['jugador1'].mention}**",
-                color=0xff9900
-            )
-            embed_siguiente.add_field(name="💰 BOTE", value=f"**{juego['apuesta']*2:,}** créditos", inline=True)
-            embed_siguiente.add_field(name="🎯 CÁMARAS RESTANTES", value=f"**{juego['cámaras_restantes']}**", inline=True)
-            embed_siguiente.add_field(name="📊 PROBABILIDAD", value=f"**{int((juego['cámaras_restantes']-1)/juego['cámaras_restantes']*100)}%** de sobrevivir", inline=True)
-            
-            view = self.crear_vista_disparo(game_id)
-            await interaction.edit_original_response(embed=embed_siguiente, view=view)
-
-    async def mostrar_siguiente_turno(self, interaction, game_id):
-        """Muestra el siguiente turno en PvP"""
-        juego = self.juegos_activos[game_id]
-        jugador_siguiente = juego[juego['turno_actual']]
-        
-        embed = discord.Embed(
-            title=f"🎉 SOBREVIVIÓ - RONDA {juego['ronda']}",
-            description=f"**{jugador_siguiente.mention} es tu turno...**",
-            color=0x00ff00
-        )
-        embed.add_field(name="💰 BOTE", value=f"**{juego['apuesta']*2:,}** créditos", inline=True)
-        embed.add_field(name="🎯 CÁMARAS RESTANTES", value=f"**{juego['cámaras_restantes']}**", inline=True)
-        embed.add_field(name="📊 PROBABILIDAD", value=f"**{int((juego['cámaras_restantes']-1)/juego['cámaras_restantes']*100)}%** de sobrevivir", inline=True)
-        
-        view = self.crear_vista_disparo(game_id)
-        await interaction.edit_original_response(embed=embed, view=view)
 
     @commands.command(name="cancelar")
     async def cancelar_busqueda(self, ctx):
