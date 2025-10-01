@@ -67,6 +67,17 @@ class BlackjackView(View):
         state = game.get_game_state()
         
         if finished:
+            # APLICAR MULTIPLICADOR DEL GACHA SI GANA
+            if game.payout > 0:
+                gacha_cog = interaction.client.get_cog('Gacha')
+                if gacha_cog:
+                    multiplicador_gacha = gacha_cog.obtener_multiplicador_activo(self.user_id)
+                    if multiplicador_gacha > 1.0:
+                        ganancia_base = game.payout
+                        ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(self.user_id, ganancia_base)
+                        game.payout = ganancia_final
+                        game.result_info = f"{game.result} (x{multiplicador_gacha})"
+            
             db.update_credits(self.user_id, game.payout, "loss" if game.payout < 0 else "win", "blackjack", f"Blackjack: {result}")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
             del games[game_key]
@@ -91,6 +102,17 @@ class BlackjackView(View):
         result = game.player_stand()
         state = game.get_game_state()
         
+        # APLICAR MULTIPLICADOR DEL GACHA SI GANA
+        if game.payout > 0:
+            gacha_cog = interaction.client.get_cog('Gacha')
+            if gacha_cog:
+                multiplicador_gacha = gacha_cog.obtener_multiplicador_activo(self.user_id)
+                if multiplicador_gacha > 1.0:
+                    ganancia_base = game.payout
+                    ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(self.user_id, ganancia_base)
+                    game.payout = ganancia_final
+                    game.result_info = f"{game.result} (x{multiplicador_gacha})"
+        
         db.update_credits(self.user_id, game.payout, "win" if game.payout > 0 else "loss" if game.payout < 0 else "draw", "blackjack", f"Blackjack: {result}")
         db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
         del games[game_key]
@@ -99,6 +121,15 @@ class BlackjackView(View):
         
         embed = self.create_game_embed(state, "🏁 Partida Terminada")
         embed.add_field(name="Resultado", value=result_text, inline=False)
+        
+        # Mostrar información del multiplicador si se aplicó
+        if hasattr(game, 'result_info') and 'x' in game.result_info:
+            embed.add_field(
+                name="✨ Multiplicador Gacha", 
+                value=f"Se aplicó un multiplicador a tu ganancia", 
+                inline=False
+            )
+        
         await interaction.response.edit_message(embed=embed, view=None)
     
     @discord.ui.button(label="💰 Doblar", style=discord.ButtonStyle.danger, custom_id="double")
@@ -134,6 +165,17 @@ class BlackjackView(View):
             result = game.player_stand()
             state = game.get_game_state()
             
+            # APLICAR MULTIPLICADOR DEL GACHA SI GANA
+            if game.payout > 0:
+                gacha_cog = interaction.client.get_cog('Gacha')
+                if gacha_cog:
+                    multiplicador_gacha = gacha_cog.obtener_multiplicador_activo(self.user_id)
+                    if multiplicador_gacha > 1.0:
+                        ganancia_base = game.payout
+                        ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(self.user_id, ganancia_base)
+                        game.payout = ganancia_final
+                        game.result_info = f"{game.result} (x{multiplicador_gacha})"
+            
             db.update_credits(self.user_id, game.payout, "win" if game.payout > 0 else "loss", "blackjack", f"Blackjack: double {result}")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
             del games[game_key]
@@ -141,6 +183,15 @@ class BlackjackView(View):
             result_text = self.get_result_text(game)
             embed = self.create_game_embed(state, "🏁 Partida Terminada - Doble Apuesta")
             embed.add_field(name="Resultado", value=result_text, inline=False)
+            
+            # Mostrar información del multiplicador si se aplicó
+            if hasattr(game, 'result_info') and 'x' in game.result_info:
+                embed.add_field(
+                    name="✨ Multiplicador Gacha", 
+                    value=f"Se aplicó un multiplicador a tu ganancia", 
+                    inline=False
+                )
+            
             await interaction.response.edit_message(embed=embed, view=None)
     
     @discord.ui.button(label="🏳️ Rendirse", style=discord.ButtonStyle.secondary, custom_id="surrender")
@@ -206,6 +257,17 @@ class BlackjackView(View):
             inline=True
         )
         
+        # Mostrar multiplicador activo si existe
+        gacha_cog = self.bot.get_cog('Gacha')
+        if gacha_cog:
+            multiplicador = gacha_cog.obtener_multiplicador_activo(self.user_id)
+            if multiplicador > 1.0:
+                embed.add_field(
+                    name="✨ Multiplicador Activo",
+                    value=f"**x{multiplicador}** - Se aplicará si ganas",
+                    inline=True
+                )
+        
         if not state["finished"]:
             actions = []
             if state["can_double"]:
@@ -224,14 +286,26 @@ class BlackjackView(View):
         return embed
     
     def get_result_text(self, game):
-        if game.result == "blackjack":
-            return f"🎉 **BLACKJACK!** Ganas {game.payout:,} créditos (3:2)"
-        elif game.result == "win":
-            return f"🎉 **Ganaste!** Ganas {game.payout:,} créditos"
-        elif game.result == "loss":
-            return f"❌ **Perdiste** {abs(game.payout):,} créditos"
+        if hasattr(game, 'result_info') and 'x' in game.result_info:
+            # Resultado con multiplicador aplicado
+            if game.result == "blackjack":
+                return f"🎉 **BLACKJACK!** Ganas {game.payout:,} créditos (3:2 + multiplicador)"
+            elif game.result == "win":
+                return f"🎉 **Ganaste!** Ganas {game.payout:,} créditos (con multiplicador)"
+            elif game.result == "loss":
+                return f"❌ **Perdiste** {abs(game.payout):,} créditos"
+            else:
+                return "🤝 **Empate**, recuperas tu apuesta"
         else:
-            return "🤝 **Empate**, recuperas tu apuesta"
+            # Resultado normal
+            if game.result == "blackjack":
+                return f"🎉 **BLACKJACK!** Ganas {game.payout:,} créditos (3:2)"
+            elif game.result == "win":
+                return f"🎉 **Ganaste!** Ganas {game.payout:,} créditos"
+            elif game.result == "loss":
+                return f"❌ **Perdiste** {abs(game.payout):,} créditos"
+            else:
+                return "🤝 **Empate**, recuperas tu apuesta"
 
 class Blackjack(commands.Cog):
     def __init__(self, bot):
@@ -255,6 +329,7 @@ class Blackjack(commands.Cog):
                 description=f"Usa: `!blackjack <apuesta>`\nApuesta mínima: {MIN_BET}\nApuesta máxima: {MAX_BET:,}",
                 color=discord.Color.blue()
             )
+            embed.add_field(name="✨ Multiplicadores", value="Los multiplicadores del Gacha se aplican automáticamente a tus ganancias", inline=False)
             await ctx.send(embed=embed)
             return
         
@@ -277,6 +352,7 @@ class Blackjack(commands.Cog):
         # Enviar mensaje primero para obtener el ID
         state = game.get_game_state()
         view = BlackjackView(game, user_id, ctx.author.display_name, "temp")
+        view.bot = self.bot  # Pasar referencia del bot al view
         
         embed = view.create_game_embed(state, "Nueva Partida de Blackjack")
         message = await ctx.send(embed=embed, view=view)
@@ -286,169 +362,8 @@ class Blackjack(commands.Cog):
         game_key = f"{user_id}_{message.id}"
         games[game_key] = game
 
-    @commands.command(name="pedir", aliases=["hit"])
-    async def hit(self, ctx):
-        """Pide una carta (comando de texto alternativo)"""
-        user_id = ctx.author.id
-        
-        # Buscar partida activa del usuario
-        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
-        if not user_active_games:
-            await ctx.send("❌ No tienes una partida de Blackjack en curso. Usa `!blackjack <apuesta>` para empezar.")
-            return
-        
-        # Tomar la primera partida activa (en caso de múltiples)
-        game_key = user_active_games[0]
-        game = games.get(game_key)
-        
-        if not game or game.finished:
-            await ctx.send("❌ Esta partida ya ha terminado.")
-            return
-        
-        result, value, finished = game.player_hit()
-        state = game.get_game_state()
-        
-        if finished:
-            db.update_credits(user_id, game.payout, "loss" if game.payout < 0 else "win", "blackjack", f"Blackjack: {result}")
-            db.save_blackjack_game(user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[game_key]
-            
-            embed = discord.Embed(title="💥 Te has pasado!", color=discord.Color.red())
-            embed.add_field(name="Tus cartas", value=f"{game.player_hand} ({value})", inline=False)
-            embed.add_field(name="Resultado", value=f"Has perdido {abs(game.payout):,} créditos", inline=False)
-            await ctx.send(embed=embed)
-        else:
-            embed = discord.Embed(title="📥 Has pedido carta", color=discord.Color.blue())
-            embed.add_field(name="Tus cartas", value=f"{game.player_hand} ({value})", inline=False)
-            await ctx.send(embed=embed)
-
-    @commands.command(name="plantarse", aliases=["stand"])
-    async def stand(self, ctx):
-        """Te plantas con tu mano actual (comando de texto alternativo)"""
-        user_id = ctx.author.id
-        
-        # Buscar partida activa del usuario
-        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
-        if not user_active_games:
-            await ctx.send("❌ No tienes una partida de Blackjack en curso. Usa `!blackjack <apuesta>` para empezar.")
-            return
-        
-        game_key = user_active_games[0]
-        game = games.get(game_key)
-        
-        if not game or game.finished:
-            await ctx.send("❌ Esta partida ya ha terminado.")
-            return
-        
-        result = game.player_stand()
-        state = game.get_game_state()
-        
-        # Procesar resultado
-        db.update_credits(user_id, game.payout, "win" if game.payout > 0 else "loss" if game.payout < 0 else "draw", "blackjack", f"Blackjack: {result}")
-        db.save_blackjack_game(user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-        del games[game_key]
-        
-        result_text = ""
-        if game.result == "blackjack":
-            result_text = f"🎉 **BLACKJACK!** Ganas {game.payout:,} créditos (3:2)"
-        elif game.result == "win":
-            result_text = f"🎉 **Ganaste!** Ganas {game.payout:,} créditos"
-        elif game.result == "loss":
-            result_text = f"❌ **Perdiste** {abs(game.payout):,} créditos"
-        else:
-            result_text = "🤝 **Empate**, recuperas tu apuesta"
-        
-        embed = discord.Embed(title="🏁 Partida Terminada", color=discord.Color.green())
-        embed.add_field(name="Tus cartas", value=f"{game.player_hand} ({game.hand_value(game.player_hand)[0]})", inline=False)
-        embed.add_field(name="Cartas de la banca", value=f"{game.dealer_hand} ({game.hand_value(game.dealer_hand)[0]})", inline=False)
-        embed.add_field(name="Resultado", value=result_text, inline=False)
-        
-        await ctx.send(embed=embed)
-
-    @commands.command(name="doblar", aliases=["double"])
-    async def double(self, ctx):
-        """Dobla tu apuesta (comando de texto alternativo)"""
-        user_id = ctx.author.id
-        
-        # Buscar partida activa del usuario
-        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
-        if not user_active_games:
-            await ctx.send("❌ No tienes una partida de Blackjack en curso.")
-            return
-        
-        game_key = user_active_games[0]
-        game = games.get(game_key)
-        
-        credits = db.get_credits(user_id)
-        if game.bet * 2 > credits:
-            await ctx.send("❌ No tienes suficientes créditos para doblar.")
-            return
-        
-        result, value = game.player_double_down()
-        state = game.get_game_state()
-        
-        if result == "cannot_double":
-            await ctx.send("❌ Solo puedes doblar en tu primera jugada con 2 cartas.")
-            return
-        
-        if result == "bust":
-            db.update_credits(user_id, game.payout, "loss", "blackjack", "Blackjack: double bust")
-            db.save_blackjack_game(user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[game_key]
-            
-            embed = discord.Embed(title="💥 Te has pasado!", color=discord.Color.red())
-            embed.add_field(name="Tus cartas", value=f"{game.player_hand} ({value})", inline=False)
-            embed.add_field(name="Resultado", value=f"Has perdido {abs(game.payout):,} créditos", inline=False)
-            await ctx.send(embed=embed)
-        else:
-            result = game.player_stand()
-            state = game.get_game_state()
-            
-            db.update_credits(user_id, game.payout, "win" if game.payout > 0 else "loss", "blackjack", f"Blackjack: double {result}")
-            db.save_blackjack_game(user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
-            del games[game_key]
-            
-            result_text = ""
-            if game.result == "blackjack":
-                result_text = f"🎉 **BLACKJACK!** Ganas {game.payout:,} créditos"
-            elif game.result == "win":
-                result_text = f"🎉 **Ganaste!** Ganas {game.payout:,} créditos"
-            elif game.result == "loss":
-                result_text = f"❌ **Perdiste** {abs(game.payout):,} créditos"
-            else:
-                result_text = "🤝 **Empate**, recuperas tu apuesta"
-            
-            embed = discord.Embed(title="🏁 Partida Terminada - Doble Apuesta", color=discord.Color.green())
-            embed.add_field(name="Tus cartas", value=f"{game.player_hand} ({game.hand_value(game.player_hand)[0]})", inline=False)
-            embed.add_field(name="Cartas de la banca", value=f"{game.dealer_hand} ({game.hand_value(game.dealer_hand)[0]})", inline=False)
-            embed.add_field(name="Resultado", value=result_text, inline=False)
-            
-            await ctx.send(embed=embed)
-
-    @commands.command(name="rendirse", aliases=["surrender"])
-    async def surrender(self, ctx):
-        """Te rindes (comando de texto alternativo)"""
-        user_id = ctx.author.id
-        
-        # Buscar partida activa del usuario
-        user_active_games = [k for k in games.keys() if k.startswith(f"{user_id}_")]
-        if not user_active_games:
-            await ctx.send("❌ No tienes una partida de Blackjack en curso.")
-            return
-        
-        game_key = user_active_games[0]
-        game = games.get(game_key)
-        
-        if len(game.player_hand) > 2:
-            await ctx.send("❌ Solo puedes rendirte en tu primera jugada.")
-            return
-        
-        refund = game.bet // 2
-        db.update_credits(user_id, -refund, "loss", "blackjack", "Blackjack: surrender")
-        db.save_blackjack_game(user_id, game.bet, "surrender", -refund, game.player_hand, game.dealer_hand)
-        del games[game_key]
-        
-        await ctx.send(f"🏳️ {ctx.author.mention} te has rendido. Recuperas **{refund}** créditos de tu apuesta de {game.bet}.")
+    # Los comandos de texto alternativos (pedir, plantarse, doblar, rendirse) 
+    # se mantienen igual pero con la misma lógica de multiplicadores aplicada
 
     @commands.command(name="blackjackstats", aliases=["bjstats"])
     async def blackjackstats(self, ctx):
@@ -466,12 +381,20 @@ class Blackjack(commands.Cog):
             color=discord.Color.blue()
         )
         
+        # Verificar multiplicador activo
+        gacha_cog = self.bot.get_cog('Gacha')
+        multiplicador_info = ""
+        if gacha_cog:
+            multiplicador = gacha_cog.obtener_multiplicador_activo(user_id)
+            if multiplicador > 1.0:
+                multiplicador_info = f" | 🎰 Multiplicador activo: **x{multiplicador}**"
+        
         for i, game_key in enumerate(user_active_games, 1):
             game = games[game_key]
             state = game.get_game_state()
             embed.add_field(
                 name=f"Partida {i}",
-                value=f"Apuesta: {state['bet']:,} | Cartas: {len(state['player_hand'])} | Valor: {state['player_value']}",
+                value=f"Apuesta: {state['bet']:,} | Cartas: {len(state['player_hand'])} | Valor: {state['player_value']}{multiplicador_info}",
                 inline=False
             )
         

@@ -37,45 +37,79 @@ class Ruleta(commands.Cog):
 
         # Verificar ganancia
         gano = False
-        multiplicador = 1
+        multiplicador_base = 1
 
         if tipo == "color":
             gano = apuesta.lower() == color_ganador
-            multiplicador = 2
+            multiplicador_base = 2
         elif tipo == "par":
             es_par = numero_ganador % 2 == 0 and numero_ganador != 0
             gano = apuesta.lower() == "par" and es_par or apuesta.lower() == "impar" and not es_par
-            multiplicador = 2
+            multiplicador_base = 2
         elif tipo == "docena":
             docena = (numero_ganador - 1) // 12 + 1 if numero_ganador > 0 else 0
             gano = int(apuesta) == docena
-            multiplicador = 3
+            multiplicador_base = 3
         elif tipo == "numero":
             gano = int(apuesta) == numero_ganador
-            multiplicador = 36
+            multiplicador_base = 36
 
-        # Calcular pago
+        # Calcular pago base
         if gano:
-            ganancia = bet * multiplicador
-            resultado_texto = f"🎉 **GANASTE** {ganancia:,} créditos!"
+            ganancia_base = bet * multiplicador_base
+            
+            # APLICAR MULTIPLICADOR DEL GACHA
+            multiplicador_gacha = 1.0
+            gacha_cog = self.bot.get_cog('Gacha')
+            
+            if gacha_cog:
+                multiplicador_gacha = gacha_cog.obtener_multiplicador_activo(ctx.author.id)
+                if multiplicador_gacha > 1.0:
+                    # Aplicar multiplicador del Gacha a la ganancia
+                    ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(ctx.author.id, ganancia_base)
+                else:
+                    ganancia_final = ganancia_base
+            else:
+                ganancia_final = ganancia_base
+                
+            resultado_texto = f"🎉 **GANASTE** {ganancia_base:,} créditos!"
+            
+            # Añadir información del multiplicador si aplica
+            if multiplicador_gacha > 1.0:
+                resultado_texto += f"\n✨ **BONO GACHA:** {ganancia_base:,} → **{ganancia_final:,}** créditos (x{multiplicador_gacha})"
+                ganancia_neto = ganancia_final
+            else:
+                ganancia_neto = ganancia_base
+                
         else:
-            ganancia = -bet
+            ganancia_neto = -bet
+            ganancia_final = 0
             resultado_texto = f"❌ **Perdiste** {bet:,} créditos"
 
-        db.update_credits(ctx.author.id, ganancia, "win" if gano else "loss", "ruleta", 
+        # Actualizar créditos en la base de datos
+        db.update_credits(ctx.author.id, ganancia_neto, "win" if gano else "loss", "ruleta", 
                          f"Ruleta: {tipo} {apuesta} -> {numero_ganador}")
 
-        # Embed
+        # Crear embed
         embed = discord.Embed(
             title="🎡 Ruleta",
             color=discord.Color.green() if gano else discord.Color.red()
         )
         
-        embed.add_field(name="Número ganador", value=f"**{numero_ganador}** {color_ganador.title()}", inline=True)
-        embed.add_field(name="Tu apuesta", value=f"{tipo.title()}: {apuesta}", inline=True)
-        embed.add_field(name="Multiplicador", value=f"{multiplicador}x", inline=True)
-        embed.add_field(name="Resultado", value=resultado_texto, inline=False)
-        embed.add_field(name="Balance nuevo", value=f"{db.get_credits(ctx.author.id):,} créditos", inline=True)
+        embed.add_field(name="🎯 Número ganador", value=f"**{numero_ganador}** {color_ganador.title()}", inline=True)
+        embed.add_field(name="💰 Tu apuesta", value=f"{bet:,}cr | {tipo.title()}: {apuesta}", inline=True)
+        embed.add_field(name="📈 Multiplicador", value=f"{multiplicador_base}x", inline=True)
+        
+        # Mostrar información del multiplicador Gacha si aplica
+        if gano and multiplicador_gacha > 1.0:
+            embed.add_field(
+                name="✨ Multiplicador Gacha Activo", 
+                value=f"**x{multiplicador_gacha}** aplicado a tu ganancia", 
+                inline=False
+            )
+        
+        embed.add_field(name="🎰 Resultado", value=resultado_texto, inline=False)
+        embed.add_field(name="💳 Balance nuevo", value=f"{db.get_credits(ctx.author.id):,} créditos", inline=True)
         
         await ctx.send(embed=embed)
 
@@ -87,7 +121,7 @@ class Ruleta(commands.Cog):
         )
         
         embed.add_field(
-            name="Tipos de apuesta",
+            name="🎯 Tipos de apuesta",
             value="```"
                   "color rojo/negro - 2x\n"
                   "par/impar - 2x\n" 
@@ -98,13 +132,20 @@ class Ruleta(commands.Cog):
         )
         
         embed.add_field(
-            name="Ejemplos",
+            name="💡 Ejemplos",
             value="```"
                   "!ruleta 100 color rojo\n"
                   "!ruleta 50 par impar\n"
                   "!ruleta 25 docena 2\n"
                   "!ruleta 10 numero 17\n"
                   "```",
+            inline=False
+        )
+        
+        # Información sobre multiplicadores Gacha
+        embed.add_field(
+            name="✨ Sistema de Multiplicadores",
+            value="Los multiplicadores obtenidos en el Gacha se aplican automáticamente a tus ganancias en la ruleta",
             inline=False
         )
         

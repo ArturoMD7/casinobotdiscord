@@ -5,10 +5,11 @@ from db.database import Database
 import random
 import asyncio
 import time
+import math
 
 db = Database()
 
-# Sistema de Gacha completo
+# Sistema de Gacha simplificado - Solo créditos y multiplicadores
 SISTEMA_GACHA = {
     "cajas": {
         "basica": {
@@ -16,12 +17,10 @@ SISTEMA_GACHA = {
             "costo": 100,
             "cooldown": 3600,  # 1 hora
             "probabilidades": [
-                {"tipo": "creditos", "valor": 50, "prob": 0.40, "emoji": "💰", "nombre": "Créditos Pequeños", "rareza": "comun"},
-                {"tipo": "creditos", "valor": 100, "prob": 0.25, "emoji": "💰", "nombre": "Créditos Medianos", "rareza": "comun"},
+                {"tipo": "creditos", "valor": 50, "prob": 0.50, "emoji": "💰", "nombre": "Créditos Pequeños", "rareza": "comun"},
+                {"tipo": "creditos", "valor": 100, "prob": 0.30, "emoji": "💰", "nombre": "Créditos Medianos", "rareza": "comun"},
                 {"tipo": "creditos", "valor": 200, "prob": 0.15, "emoji": "💰", "nombre": "Créditos Grandes", "rareza": "raro"},
-                {"tipo": "multiplicador", "valor": 1.5, "prob": 0.10, "emoji": "✨", "nombre": "Multiplicador x1.5", "rareza": "raro", "duracion": 3600},
-                {"tipo": "proteccion", "valor": "inmunidad", "prob": 0.08, "emoji": "🛡️", "nombre": "Escudo Anti-Pérdidas", "rareza": "epico", "duracion": 7200},
-                {"tipo": "creditos", "valor": 500, "prob": 0.02, "emoji": "💎", "nombre": "BOLSA DE ORO", "rareza": "epico"}
+                {"tipo": "multiplicador", "valor": 1.25, "prob": 0.05, "emoji": "✨", "nombre": "Multiplicador x1.25", "rareza": "raro", "duracion": 3600}
             ]
         },
         "premium": {
@@ -29,13 +28,11 @@ SISTEMA_GACHA = {
             "costo": 500,
             "cooldown": 10800,  # 3 horas
             "probabilidades": [
-                {"tipo": "creditos", "valor": 200, "prob": 0.30, "emoji": "💰", "nombre": "Créditos Decentes", "rareza": "comun"},
+                {"tipo": "creditos", "valor": 200, "prob": 0.35, "emoji": "💰", "nombre": "Créditos Decentes", "rareza": "comun"},
                 {"tipo": "creditos", "valor": 500, "prob": 0.25, "emoji": "💰", "nombre": "Créditos Buenos", "rareza": "raro"},
-                {"tipo": "multiplicador", "valor": 2.0, "prob": 0.15, "emoji": "✨", "nombre": "Multiplicador x2", "rareza": "raro", "duracion": 3600},
-                {"tipo": "proteccion", "valor": "inmunidad", "prob": 0.12, "emoji": "🛡️", "nombre": "Escudo Dorado", "rareza": "epico", "duracion": 10800},
-                {"tipo": "vip", "valor": "acceso_vip", "prob": 0.10, "emoji": "👑", "nombre": "Pase VIP", "rareza": "epico", "duracion": 86400},
-                {"tipo": "creditos", "valor": 1000, "prob": 0.05, "emoji": "💎", "nombre": "COFRE DEL TESORO", "rareza": "legendario"},
-                {"tipo": "jackpot", "valor": 5000, "prob": 0.03, "emoji": "🎊", "nombre": "JACKPOT ÉPICO", "rareza": "legendario"}
+                {"tipo": "multiplicador", "valor": 1.5, "prob": 0.20, "emoji": "✨", "nombre": "Multiplicador x1.5", "rareza": "raro", "duracion": 3600},
+                {"tipo": "multiplicador", "valor": 1.75, "prob": 0.15, "emoji": "✨", "nombre": "Multiplicador x1.75", "rareza": "epico", "duracion": 3600},
+                {"tipo": "creditos", "valor": 1000, "prob": 0.05, "emoji": "💎", "nombre": "BOLSA PREMIUM", "rareza": "epico"}
             ]
         },
         "legendaria": {
@@ -43,23 +40,20 @@ SISTEMA_GACHA = {
             "costo": 2000,
             "cooldown": 86400,  # 24 horas
             "probabilidades": [
-                {"tipo": "creditos", "valor": 1000, "prob": 0.25, "emoji": "💰", "nombre": "Fortuna Pequeña", "rareza": "raro"},
-                {"tipo": "multiplicador", "valor": 3.0, "prob": 0.20, "emoji": "✨", "nombre": "Multiplicador x3", "rareza": "epico", "duracion": 7200},
-                {"tipo": "proteccion", "valor": "inmunidad_total", "prob": 0.15, "emoji": "🛡️", "nombre": "Inmunidad Total", "rareza": "epico", "duracion": 14400},
-                {"tipo": "vip", "valor": "acceso_vip", "prob": 0.15, "emoji": "👑", "nombre": "Pase VIP Plus", "rareza": "epico", "duracion": 172800},
-                {"tipo": "revivir", "valor": "revivir", "prob": 0.10, "emoji": "💖", "nombre": "Poción de Revivir", "rareza": "legendario"},
-                {"tipo": "creditos", "valor": 5000, "prob": 0.08, "emoji": "💎", "nombre": "TESORO ANCESTRAL", "rareza": "legendario"},
-                {"tipo": "jackpot", "valor": 10000, "prob": 0.05, "emoji": "🎊", "nombre": "MEGA JACKPOT", "rareza": "mitico"},
-                {"tipo": "legendario", "valor": "titulo_legendario", "prob": 0.02, "emoji": "🏆", "nombre": "TÍTULO LEGENDARIO", "rareza": "mitico"}
+                {"tipo": "creditos", "valor": 1000, "prob": 0.30, "emoji": "💰", "nombre": "Fortuna Pequeña", "rareza": "raro"},
+                {"tipo": "multiplicador", "valor": 2.0, "prob": 0.25, "emoji": "✨", "nombre": "Multiplicador x2.0", "rareza": "epico", "duracion": 7200},
+                {"tipo": "multiplicador", "valor": 2.5, "prob": 0.20, "emoji": "✨", "nombre": "Multiplicador x2.5", "rareza": "legendario", "duracion": 7200},
+                {"tipo": "creditos", "valor": 5000, "prob": 0.15, "emoji": "💎", "nombre": "TESORO ÉPICO", "rareza": "legendario"},
+                {"tipo": "multiplicador", "valor": 3.0, "prob": 0.10, "emoji": "🎊", "nombre": "MULTIPLICADOR LEGENDARIO x3.0", "rareza": "mitico", "duracion": 3600}
             ]
         }
     },
     "bonos_rareza": {
         "comun": {"color": 0x808080, "multiplicador": 1.0},
-        "raro": {"color": 0x0099ff, "multiplicador": 1.5},
-        "epico": {"color": 0x9933ff, "multiplicador": 2.0},
-        "legendario": {"color": 0xff9900, "multiplicador": 3.0},
-        "mitico": {"color": 0xff0000, "multiplicador": 5.0}
+        "raro": {"color": 0x0099ff, "multiplicador": 1.2},
+        "epico": {"color": 0x9933ff, "multiplicador": 1.5},
+        "legendario": {"color": 0xff9900, "multiplicador": 2.0},
+        "mitico": {"color": 0xff0000, "multiplicador": 3.0}
     }
 }
 
@@ -154,43 +148,19 @@ class GachaView(View):
             # Activar bono temporal
             if user_id not in bonos_activos:
                 bonos_activos[user_id] = {}
+            
             bonos_activos[user_id]["multiplicador"] = {
                 "valor": premio["valor"],
-                "expiracion": time.time() + premio.get("duracion", 3600)
+                "expiracion": time.time() + premio.get("duracion", 3600),
+                "nombre": premio["nombre"]
             }
-            mensaje_resultado = f"**Multiplicador x{premio['valor']}** por {premio.get('duracion', 3600)//3600}h"
             
-        elif premio["tipo"] == "proteccion":
-            if user_id not in bonos_activos:
-                bonos_activos[user_id] = {}
-            bonos_activos[user_id]["proteccion"] = {
-                "tipo": premio["valor"],
-                "expiracion": time.time() + premio.get("duracion", 7200)
-            }
-            mensaje_resultado = f"**{premio['nombre']}** por {premio.get('duracion', 7200)//3600}h"
+            duracion_horas = premio.get("duracion", 3600) // 3600
+            mensaje_resultado = f"**{premio['nombre']}** por {duracion_horas}h"
             
-        elif premio["tipo"] == "vip":
-            if user_id not in bonos_activos:
-                bonos_activos[user_id] = {}
-            bonos_activos[user_id]["vip"] = {
-                "expiracion": time.time() + premio.get("duracion", 86400)
-            }
-            mensaje_resultado = f"**{premio['nombre']}** por {premio.get('duracion', 86400)//86400}días"
-            
-        elif premio["tipo"] == "revivir":
-            if user_id not in bonos_activos:
-                bonos_activos[user_id] = {}
-            bonos_activos[user_id]["revivir"] = True
-            mensaje_resultado = f"**{premio['nombre']}** - Recupera tu última apuesta perdida"
-            
-        elif premio["tipo"] == "jackpot":
-            valor_final = int(premio["valor"] * bono_rareza["multiplicador"])
-            db.update_credits(user_id, valor_final, "bonus", "gacha_jackpot", f"JACKPOT {premio['nombre']}")
-            mensaje_resultado = f"**🎊 JACKPOT! +{valor_final:,} créditos 🎊**"
-            
-        elif premio["tipo"] == "legendario":
-            # Título especial en el perfil
-            mensaje_resultado = f"**{premio['nombre']}** - ¡Eres una leyenda!"
+            # Mensaje especial para multiplicadores altos
+            if premio["valor"] >= 2.5:
+                mensaje_resultado += " 🎊 **¡BONO ÉPICO!** 🎊"
         
         # Registrar en colección
         if user_id not in colecciones_usuarios:
@@ -212,6 +182,14 @@ class GachaView(View):
         embed_resultado.add_field(name="📦 Caja", value=caja["nombre"], inline=True)
         embed_resultado.add_field(name="🎰 Probabilidad", value=f"{premio['prob']*100:.1f}%", inline=True)
         
+        # Mostrar información adicional para multiplicadores
+        if premio["tipo"] == "multiplicador":
+            embed_resultado.add_field(
+                name="💡 ¿Cómo funciona?", 
+                value="Este multiplicador se aplicará automáticamente a tus próximas ganancias",
+                inline=False
+            )
+        
         if premio["rareza"] in ["epico", "legendario", "mitico"]:
             embed_resultado.set_image(url="https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif")
         
@@ -226,7 +204,7 @@ class Gacha(commands.Cog):
         """Sistema de cajas misteriosas con premios épicos"""
         embed = discord.Embed(
             title="🎰 **SISTEMA GACHA - CAJAS MISTERIOSAS** 🎰",
-            description="**¡Abre cajas y descubre premios increíbles!**\nCada caja tiene diferentes rarezas y cooldowns.",
+            description="**¡Abre cajas y descubre premios increíbles!**\nSolo créditos y multiplicadores disponibles.",
             color=0xff00ff
         )
         
@@ -254,9 +232,9 @@ class Gacha(commands.Cog):
             rarezas_text += f"{info['color']} **{rareza.upper()}** (x{info['multiplicador']})\n"
         
         embed.add_field(name="🎨 SISTEMA DE RAREZAS", value=rarezas_text, inline=False)
-        embed.add_field(name="🎯 Tipos de Premios", value="💰 Créditos\n✨ Multiplicadores\n🛡️ Protecciones\n👑 Pases VIP\n💖 Revivir\n🎊 JACKPOTS", inline=True)
+        embed.add_field(name="🎯 Tipos de Premios", value="💰 Créditos directos\n✨ Multiplicadores (1.25x - 3.0x)", inline=True)
         
-        embed.set_footer(text="¡Cada caja puede cambiar tu suerte!")
+        embed.set_footer(text="¡Los multiplicadores se aplican automáticamente a tus ganancias!")
         
         view = GachaView(ctx.author.id)
         await ctx.send(embed=embed, view=view)
@@ -308,6 +286,9 @@ class Gacha(commands.Cog):
         """Muestra tus bonos activos del Gacha"""
         user_id = ctx.author.id
         
+        # Limpiar bonos expirados primero
+        self.limpiar_bonos_expirados(user_id)
+        
         if user_id not in bonos_activos or not bonos_activos[user_id]:
             await ctx.send("❌ No tienes bonos activos en este momento.")
             return
@@ -321,41 +302,48 @@ class Gacha(commands.Cog):
             if bono_tipo == "multiplicador":
                 tiempo_restante = bono_info["expiracion"] - time.time()
                 if tiempo_restante > 0:
-                    minutos = int(tiempo_restante // 60)
-                    embed.add_field(
-                        name="✨ Multiplicador", 
-                        value=f"x{bono_info['valor']} - {minutos}m restantes", 
-                        inline=True
-                    )
-                    
-            elif bono_tipo == "proteccion":
-                tiempo_restante = bono_info["expiracion"] - time.time()
-                if tiempo_restante > 0:
-                    minutos = int(tiempo_restante // 60)
-                    embed.add_field(
-                        name="🛡️ Protección", 
-                        value=f"{bono_info['tipo']} - {minutos}m restantes", 
-                        inline=True
-                    )
-                    
-            elif bono_tipo == "vip":
-                tiempo_restante = bono_info["expiracion"] - time.time()
-                if tiempo_restante > 0:
                     horas = int(tiempo_restante // 3600)
+                    minutos = int((tiempo_restante % 3600) // 60)
                     embed.add_field(
-                        name="👑 VIP", 
-                        value=f"Activo - {horas}h restantes", 
+                        name="✨ Multiplicador Activo", 
+                        value=f"**{bono_info['nombre']}**\nTiempo restante: {horas}h {minutos}m", 
                         inline=True
                     )
-                    
-            elif bono_tipo == "revivir":
-                embed.add_field(
-                    name="💖 Revivir", 
-                    value="Disponible - Recupera última apuesta", 
-                    inline=True
-                )
         
         await ctx.send(embed=embed)
+
+    def limpiar_bonos_expirados(self, user_id: int):
+        """Elimina los bonos que han expirado"""
+        if user_id in bonos_activos:
+            bonos_a_eliminar = []
+            for bono_tipo, bono_info in bonos_activos[user_id].items():
+                if "expiracion" in bono_info and time.time() > bono_info["expiracion"]:
+                    bonos_a_eliminar.append(bono_tipo)
+            
+            for bono in bonos_a_eliminar:
+                del bonos_activos[user_id][bono]
+            
+            if not bonos_activos[user_id]:
+                del bonos_activos[user_id]
+
+    def obtener_multiplicador_activo(self, user_id: int) -> float:
+        """Obtiene el multiplicador activo para un usuario"""
+        self.limpiar_bonos_expirados(user_id)
+        
+        if user_id in bonos_activos and "multiplicador" in bonos_activos[user_id]:
+            return bonos_activos[user_id]["multiplicador"]["valor"]
+        return 1.0
+
+    def aplicar_multiplicador_ganancias(self, user_id: int, ganancia_base: int) -> int:
+        """Aplica el multiplicador activo a las ganancias y devuelve la ganancia final"""
+        multiplicador = self.obtener_multiplicador_activo(user_id)
+        ganancia_final = int(ganancia_base * multiplicador)
+        
+        # Si hay multiplicador activo, mostrar mensaje
+        if multiplicador > 1.0:
+            print(f"[GACHA] Multiplicador aplicado: {ganancia_base} -> {ganancia_final} (x{multiplicador})")
+        
+        return ganancia_final
 
     @commands.command(name="gachastats", aliases=["gachaestadisticas"])
     async def gachastats(self, ctx):
@@ -385,7 +373,7 @@ class Gacha(commands.Cog):
                 rarezas_text += f"**{rareza.upper()}**: {cantidad}\n"
             embed.add_field(name="🎨 Distribución de Rarezas", value=rarezas_text, inline=True)
         
-        embed.add_field(name="💎 Mejor premio posible", value="**TÍTULO LEGENDARIO** (0.02%)", inline=True)
+        embed.add_field(name="💎 Mejor premio posible", value="**MULTIPLICADOR x3.0** (10%)", inline=True)
         embed.add_field(name="⏰ Cooldowns", value="Básica: 1h\nPremium: 3h\nLegendaria: 24h", inline=True)
         
         await ctx.send(embed=embed)

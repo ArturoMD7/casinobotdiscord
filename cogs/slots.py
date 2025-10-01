@@ -46,24 +46,49 @@ class Slots(commands.Cog):
         reels = [random.choice(self.symbols) for _ in range(3)]
         result = "".join(reels)
         
-        # Calcular ganancia
-        payout = 0
+        # Calcular ganancia base
+        payout_base = 0
         win_type = "❌ Sin premio"
         
         for pattern, multiplier in self.payouts.items():
             if pattern in result:
-                payout = int(bet * multiplier)
+                payout_base = int(bet * multiplier)
                 win_type = f"🎉 {pattern}"
                 break
 
-        # Actualizar créditos
-        net_win = payout - bet
-        db.update_credits(ctx.author.id, net_win, "win" if net_win > 0 else "loss", "slots", f"Slots: {result}")
+        # APLICAR MULTIPLICADOR DEL GACHA
+        multiplicador_activo = 1.0
+        multiplicador_texto = ""
+        
+        # Obtener el multiplicador del sistema Gacha
+        gacha_cog = self.bot.get_cog('Gacha')
+        if gacha_cog:
+            multiplicador_activo = gacha_cog.obtener_multiplicador_activo(ctx.author.id)
+            if multiplicador_activo > 1.0:
+                multiplicador_texto = f" (x{multiplicador_activo})"
+                # Aplicar multiplicador solo si hay ganancia
+                if payout_base > 0:
+                    payout_final = gacha_cog.aplicar_multiplicador_ganancias(ctx.author.id, payout_base)
+                else:
+                    payout_final = payout_base
+            else:
+                payout_final = payout_base
+        else:
+            payout_final = payout_base
+
+        # Calcular ganancia/pérdida neta
+        net_win = payout_final - bet
+        
+        # Actualizar créditos en la base de datos
+        if net_win > 0:
+            db.update_credits(ctx.author.id, net_win, "win", "slots", f"Slots: {result}{multiplicador_texto}")
+        else:
+            db.update_credits(ctx.author.id, -bet, "loss", "slots", f"Slots: {result}")
 
         # Crear embed
         embed = discord.Embed(
             title="🎰 Tragamonedas",
-            color=discord.Color.gold() if payout > 0 else discord.Color.red()
+            color=discord.Color.gold() if payout_final > 0 else discord.Color.red()
         )
         
         embed.add_field(
@@ -78,17 +103,33 @@ class Slots(commands.Cog):
             inline=True
         )
         
+        # Mostrar información del premio con multiplicador si aplica
+        if multiplicador_activo > 1.0 and payout_base > 0:
+            embed.add_field(
+                name="Premio",
+                value=f"{payout_base:,} → **{payout_final:,}** créditos {multiplicador_texto}",
+                inline=True
+            )
+        else:
+            embed.add_field(
+                name="Premio",
+                value=f"{payout_final:,} créditos",
+                inline=True
+            )
+        
         embed.add_field(
-            name="Premio",
-            value=f"{payout:,} créditos" if payout > 0 else "0 créditos",
+            name="Combinación",
+            value=win_type,
             inline=True
         )
         
-        embed.add_field(
-            name="Resultado",
-            value=win_type,
-            inline=False
-        )
+        # Mostrar información del multiplicador activo
+        if multiplicador_activo > 1.0:
+            embed.add_field(
+                name="✨ Multiplicador Activo",
+                value=f"**x{multiplicador_activo}** aplicado a tus ganancias",
+                inline=False
+            )
         
         embed.set_footer(text=f"Jugador: {ctx.author.display_name}")
         

@@ -47,29 +47,62 @@ class MonedaView(View):
         resultado = random.choice(["cara", "cruz"])
         emoji_resultado = "😀" if resultado == "cara" else "⭕"
         
-        # Determinar ganancia
+        # Determinar ganancia base
         if eleccion == resultado:
-            ganancia = self.apuesta
+            ganancia_base = self.apuesta
             mensaje = f"🎉 **¡GANASTE!** La moneda cayó en **{resultado}** {emoji_resultado}"
             tipo_transaccion = "win"
+            
+            # APLICAR MULTIPLICADOR DEL GACHA
+            multiplicador_gacha = 1.0
+            gacha_cog = interaction.client.get_cog('Gacha')
+            
+            if gacha_cog:
+                multiplicador_gacha = gacha_cog.obtener_multiplicador_activo(self.user_id)
+                if multiplicador_gacha > 1.0:
+                    # Aplicar multiplicador del Gacha a la ganancia
+                    ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(self.user_id, ganancia_base)
+                    mensaje += f"\n✨ **BONO GACHA:** {ganancia_base:,} → **{ganancia_final:,}** créditos (x{multiplicador_gacha})"
+                    ganancia_neto = ganancia_final
+                else:
+                    ganancia_neto = ganancia_base
+            else:
+                ganancia_neto = ganancia_base
+                
         else:
-            ganancia = -self.apuesta
+            ganancia_neto = -self.apuesta
+            ganancia_base = 0
             mensaje = f"❌ **¡Perdiste!** La moneda cayó en **{resultado}** {emoji_resultado}"
             tipo_transaccion = "loss"
 
         # Actualizar créditos
-        db.update_credits(self.user_id, ganancia, tipo_transaccion, "moneda", 
+        db.update_credits(self.user_id, ganancia_neto, tipo_transaccion, "moneda", 
                          f"Moneda: {eleccion} vs {resultado}")
 
         embed = discord.Embed(
             title="🪙 **RESULTADO - CARA O CRUZ**",
-            color=0x00ff00 if ganancia > 0 else 0xff0000
+            color=0x00ff00 if ganancia_neto > 0 else 0xff0000
         )
         embed.add_field(name="🎯 Tu elección", value=f"**{eleccion.upper()}**", inline=True)
         embed.add_field(name="🪙 Resultado", value=f"**{resultado.upper()}** {emoji_resultado}", inline=True)
         embed.add_field(name="💰 Apuesta", value=f"**{self.apuesta:,}** créditos", inline=True)
-        embed.add_field(name="💸 Resultado", value=f"**{'+' if ganancia > 0 else ''}{ganancia:,}** créditos", inline=True)
+        
+        # Mostrar información de ganancia con multiplicador si aplica
+        if ganancia_neto > 0 and multiplicador_gacha > 1.0:
+            embed.add_field(name="💸 Ganancia base", value=f"**+{ganancia_base:,}** créditos", inline=True)
+            embed.add_field(name="✨ Ganancia final", value=f"**+{ganancia_neto:,}** créditos (x{multiplicador_gacha})", inline=True)
+        else:
+            embed.add_field(name="💸 Resultado", value=f"**{'+' if ganancia_neto > 0 else ''}{ganancia_neto:,}** créditos", inline=True)
+        
         embed.add_field(name="💳 Balance nuevo", value=f"**{db.get_credits(self.user_id):,}** créditos", inline=True)
+        
+        # Mostrar información del multiplicador si está activo
+        if multiplicador_gacha > 1.0:
+            embed.add_field(
+                name="🎰 Multiplicador Activo", 
+                value=f"**x{multiplicador_gacha}** aplicado a tu ganancia", 
+                inline=False
+            )
         
         await interaction.response.edit_message(embed=embed, view=None)
 
@@ -103,21 +136,61 @@ class MonedaView(View):
         ganador_creador = duelo['eleccion_creador'] == resultado
         ganador_oponente = duelo['eleccion_oponente'] == resultado
 
+        # APLICAR MULTIPLICADORES DEL GACHA A AMBOS JUGADORES
+        gacha_cog = interaction.client.get_cog('Gacha')
+        multiplicador_creador = 1.0
+        multiplicador_oponente = 1.0
+        
+        if gacha_cog:
+            multiplicador_creador = gacha_cog.obtener_multiplicador_activo(duelo['creador_id'])
+            multiplicador_oponente = gacha_cog.obtener_multiplicador_activo(duelo['oponente_id'])
+
         # Calcular resultados
         if ganador_creador and ganador_oponente:
             # Empate - ambos ganan (raro pero posible)
             resultado_texto = "🤝 **EMPATE** - Ambos ganan!"
-            db.update_credits(duelo['creador_id'], duelo['apuesta'], "win", "moneda_duelo", f"Empate vs {duelo['oponente_nombre']}")
-            db.update_credits(duelo['oponente_id'], duelo['apuesta'], "win", "moneda_duelo", f"Empate vs {duelo['creador_nombre']}")
+            
+            # Aplicar multiplicadores a las ganancias
+            ganancia_creador_base = duelo['apuesta']
+            ganancia_oponente_base = duelo['apuesta']
+            
+            if multiplicador_creador > 1.0:
+                ganancia_creador_final = gacha_cog.aplicar_multiplicador_ganancias(duelo['creador_id'], ganancia_creador_base)
+            else:
+                ganancia_creador_final = ganancia_creador_base
+                
+            if multiplicador_oponente > 1.0:
+                ganancia_oponente_final = gacha_cog.aplicar_multiplicador_ganancias(duelo['oponente_id'], ganancia_oponente_base)
+            else:
+                ganancia_oponente_final = ganancia_oponente_base
+            
+            db.update_credits(duelo['creador_id'], ganancia_creador_final, "win", "moneda_duelo", f"Empate vs {duelo['oponente_nombre']}")
+            db.update_credits(duelo['oponente_id'], ganancia_oponente_final, "win", "moneda_duelo", f"Empate vs {duelo['creador_nombre']}")
+            
         elif ganador_creador:
             # Creador gana
             resultado_texto = f"🎉 **{duelo['creador_nombre']} GANA!**"
-            db.update_credits(duelo['creador_id'], duelo['apuesta'], "win", "moneda_duelo", f"Ganó vs {duelo['oponente_nombre']}")
+            ganancia_base = duelo['apuesta']
+            
+            if multiplicador_creador > 1.0:
+                ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(duelo['creador_id'], ganancia_base)
+            else:
+                ganancia_final = ganancia_base
+                
+            db.update_credits(duelo['creador_id'], ganancia_final, "win", "moneda_duelo", f"Ganó vs {duelo['oponente_nombre']}")
             db.update_credits(duelo['oponente_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Perdió vs {duelo['creador_nombre']}")
+            
         elif ganador_oponente:
             # Oponente gana
             resultado_texto = f"🎉 **{duelo['oponente_nombre']} GANA!**"
-            db.update_credits(duelo['oponente_id'], duelo['apuesta'], "win", "moneda_duelo", f"Ganó vs {duelo['creador_nombre']}")
+            ganancia_base = duelo['apuesta']
+            
+            if multiplicador_oponente > 1.0:
+                ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(duelo['oponente_id'], ganancia_base)
+            else:
+                ganancia_final = ganancia_base
+                
+            db.update_credits(duelo['oponente_id'], ganancia_final, "win", "moneda_duelo", f"Ganó vs {duelo['creador_nombre']}")
             db.update_credits(duelo['creador_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Perdió vs {duelo['oponente_nombre']}")
         else:
             # Nadie gana (ambos pierden)
@@ -137,6 +210,20 @@ class MonedaView(View):
         embed.add_field(name=f"🎯 {duelo['oponente_nombre']}", value=f"Eligió: **{duelo['eleccion_oponente'].upper()}**", inline=True)
         embed.add_field(name="💰 Apuesta", value=f"**{duelo['apuesta']:,}** créditos c/u", inline=True)
         embed.add_field(name="🏆 Ganador", value=resultado_texto, inline=False)
+        
+        # Mostrar multiplicadores aplicados si los hay
+        info_multiplicadores = []
+        if multiplicador_creador > 1.0 and ganador_creador:
+            info_multiplicadores.append(f"**{duelo['creador_nombre']}**: x{multiplicador_creador}")
+        if multiplicador_oponente > 1.0 and ganador_oponente:
+            info_multiplicadores.append(f"**{duelo['oponente_nombre']}**: x{multiplicador_oponente}")
+            
+        if info_multiplicadores:
+            embed.add_field(
+                name="✨ Multiplicadores Aplicados", 
+                value="\n".join(info_multiplicadores), 
+                inline=False
+            )
 
         # Eliminar duelo pendiente
         del duelos_pendientes[duelo_id]
@@ -188,6 +275,7 @@ class MonedaDueloView(View):
         
         embed.add_field(name="💰 Apuesta", value=f"**{self.apuesta:,}** créditos c/u", inline=True)
         embed.add_field(name="🏆 Premio", value=f"**{self.apuesta:,}** créditos", inline=True)
+        embed.add_field(name="✨ Multiplicadores", value="Los multiplicadores del Gacha se aplican automáticamente", inline=False)
         embed.add_field(name="🎯 Instrucciones", value="Ambos elijan Cara 😀 o Cruz ⭕", inline=False)
 
         # Cambiar a la vista de elección de moneda
@@ -222,6 +310,7 @@ class Moneda(commands.Cog):
             embed.add_field(name="🎯 Cómo jugar", value="Elige Cara 😀 o Cruz ⭕", inline=False)
             embed.add_field(name="💰 Ejemplo", value="`!moneda 100` - Apuesta 100 créditos", inline=False)
             embed.add_field(name="📊 Probabilidades", value="50% de ganar\nPago: 1:1", inline=True)
+            embed.add_field(name="✨ Multiplicadores", value="Los multiplicadores del Gacha se aplican a tus ganancias", inline=True)
             await ctx.send(embed=embed)
             return
 
@@ -242,6 +331,18 @@ class Moneda(commands.Cog):
         )
         embed.add_field(name="💰 Apuesta", value=f"**{apuesta:,}** créditos", inline=True)
         embed.add_field(name="🏆 Premio potencial", value=f"**{apuesta:,}** créditos", inline=True)
+        
+        # Verificar si tiene multiplicador activo
+        gacha_cog = self.bot.get_cog('Gacha')
+        if gacha_cog:
+            multiplicador = gacha_cog.obtener_multiplicador_activo(ctx.author.id)
+            if multiplicador > 1.0:
+                premio_con_multiplicador = int(apuesta * multiplicador)
+                embed.add_field(
+                    name="✨ Multiplicador Activo", 
+                    value=f"**x{multiplicador}** → Ganarías **{premio_con_multiplicador:,}** créditos", 
+                    inline=False
+                )
         
         view = MonedaView(ctx.author.id, apuesta)
         await ctx.send(embed=embed, view=view)
@@ -277,6 +378,7 @@ class Moneda(commands.Cog):
         )
         embed.add_field(name="🎯 Reglas", value="• Ambos eligen Cara o Cruz\n• Gana quien acierte el resultado\n• Empate si ambos aciertan\n• Ambos pierden si nadie acierta", inline=False)
         embed.add_field(name="💰 Premio", value=f"**{apuesta:,}** créditos", inline=True)
+        embed.add_field(name="✨ Multiplicadores", value="Los multiplicadores del Gacha se aplican automáticamente", inline=True)
         embed.add_field(name="⏰ Tiempo", value="60 segundos para aceptar", inline=True)
         
         message = await ctx.send(f"{oponente.mention} ¡Te han desafiado a un duelo!", embed=embed)
@@ -295,7 +397,6 @@ class Moneda(commands.Cog):
     @commands.command(name="monedastats", aliases=["coinstats"])
     async def monedastats(self, ctx):
         """Muestra estadísticas de moneda"""
-        # Aquí podrías agregar estadísticas específicas del juego de moneda
         embed = discord.Embed(
             title="📊 ESTADÍSTICAS CARA O CRUZ",
             color=0xffd700
@@ -304,6 +405,7 @@ class Moneda(commands.Cog):
         embed.add_field(name="💰 Pago", value="1:1", inline=True)
         embed.add_field(name="📈 Esperanza matemática", value="0% (juego justo)", inline=True)
         embed.add_field(name="🎮 Modos", value="• Solitario vs Casa\n• Duelo vs Jugador", inline=False)
+        embed.add_field(name="✨ Sistema Gacha", value="Los multiplicadores se aplican automáticamente a las ganancias", inline=False)
         
         await ctx.send(embed=embed)
 
