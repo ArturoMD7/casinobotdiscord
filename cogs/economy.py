@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from db.database import Database
-from config import STARTING_CREDITS
+from config import STARTING_CREDITS, RANGOS, BONOS_RANGO
 import time
 import random
 
@@ -14,11 +14,40 @@ class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def calcular_rango(self, creditos: int) -> int:
+        """Calcula el rango basado en los créditos"""
+        rango_actual = 0
+        for rango_id, datos in RANGOS.items():
+            if creditos >= datos["min_creditos"]:
+                rango_actual = rango_id
+            else:
+                break
+        return rango_actual
+
     @commands.command(name="balance", aliases=["bal", "credits"])
     async def balance(self, ctx):
         """Muestra el balance de créditos del usuario"""
         credits = db.get_credits(ctx.author.id)
-        await ctx.send(f"💰 {ctx.author.mention}, tienes **{credits:,}** créditos.")
+        rango_actual = self.calcular_rango(credits)
+        rango_info = RANGOS[rango_actual]
+        
+        embed = discord.Embed(
+            title=f"💰 Balance de {ctx.author.display_name}",
+            color=rango_info['color']
+        )
+        embed.add_field(name="💳 Créditos", value=f"**{credits:,}** créditos", inline=True)
+        embed.add_field(name="🎯 Rango", value=f"**{rango_info['nombre']}**", inline=True)
+        
+        # Mostrar bono actual si existe
+        if rango_actual in BONOS_RANGO:
+            bono_actual = BONOS_RANGO[rango_actual]
+            embed.add_field(
+                name="🎁 Beneficios", 
+                value=f"Daily: +{bono_actual['bono_daily']}\nMulti: x{bono_actual['multiplicador_ganancias']}", 
+                inline=True
+            )
+        
+        await ctx.send(embed=embed)
 
     @commands.command(name="stats")
     async def stats(self, ctx):
@@ -27,16 +56,30 @@ class Economy(commands.Cog):
         
         if stats:
             win_rate = (stats['games_won'] / stats['games_played'] * 100) if stats['games_played'] > 0 else 0
+            rango_actual = self.calcular_rango(stats['credits'])
+            rango_info = RANGOS[rango_actual]
             
             embed = discord.Embed(
                 title=f"📊 Estadísticas de {ctx.author.display_name}",
-                color=discord.Color.blue()
+                color=rango_info['color']
             )
-            embed.add_field(name="🎮 Partidas Jugadas", value=f"{stats['games_played']:,}", inline=True)
-            embed.add_field(name="🏆 Partidas Ganadas", value=f"{stats['games_won']:,}", inline=True)
-            embed.add_field(name="📈 Ratio de Victorias", value=f"{win_rate:.1f}%", inline=True)
-            embed.add_field(name="💰 Ganancias Totales", value=f"{stats['total_winnings']:,} créditos", inline=True)
-            embed.add_field(name="💳 Créditos Actuales", value=f"{stats['credits']:,} créditos", inline=True)
+            embed.add_field(name="🎯 Rango", value=f"**{rango_info['nombre']}**", inline=True)
+            embed.add_field(name="💳 Créditos", value=f"**{stats['credits']:,}**", inline=True)
+            embed.add_field(name="🎮 Partidas", value=f"**{stats['games_played']:,}**", inline=True)
+            embed.add_field(name="🏆 Victorias", value=f"**{stats['games_won']:,}**", inline=True)
+            embed.add_field(name="📈 Ratio", value=f"**{win_rate:.1f}%**", inline=True)
+            embed.add_field(name="💰 Ganancias Totales", value=f"**{stats['total_winnings']:,}**", inline=True)
+            
+            # Mostrar progreso al siguiente rango
+            if rango_actual < max(RANGOS.keys()):
+                siguiente_rango = RANGOS[rango_actual + 1]
+                faltante = siguiente_rango['min_creditos'] - stats['credits']
+                if faltante > 0:
+                    embed.add_field(
+                        name="🎯 Próximo Rango", 
+                        value=f"**{siguiente_rango['nombre']}**\nFaltan: **{faltante:,}** créditos", 
+                        inline=False
+                    )
             
             await ctx.send(embed=embed)
         else:
@@ -44,10 +87,18 @@ class Economy(commands.Cog):
 
     @commands.command(name="daily")
     async def daily(self, ctx):
-        """Reclama créditos diarios (solo una vez cada 24 horas)"""
+        """Reclama créditos diarios (con bonus por rango)"""
         user_id = ctx.author.id
         current_time = time.time()
-        daily_amount = 500  # Cantidad de créditos diarios
+        
+        # Obtener créditos actuales y calcular rango
+        credits = db.get_credits(user_id)
+        rango_actual = self.calcular_rango(credits)
+        
+        # Calcular daily base + bono de rango
+        daily_base = 500
+        bono_rango = BONOS_RANGO.get(rango_actual, {"bono_daily": 0})["bono_daily"]
+        daily_total = daily_base + bono_rango
         
         # Verificar si ya reclamó el daily hoy
         if user_id in last_daily:
@@ -64,77 +115,39 @@ class Economy(commands.Cog):
                 return
         
         # Dar los créditos diarios
-        db.update_credits(user_id, daily_amount, "bonus", "daily", "Recompensa diaria")
+        db.update_credits(user_id, daily_total, "bonus", "daily", f"Recompensa diaria + bono rango {rango_actual}")
         last_daily[user_id] = current_time
+        
+        rango_info = RANGOS[rango_actual]
         
         embed = discord.Embed(
             title="🎁 Recompensa Diaria",
             description=f"¡Has reclamado tu recompensa diaria!",
-            color=discord.Color.gold()
+            color=rango_info['color']
         )
-        embed.add_field(name="💰 Créditos obtenidos", value=f"**+{daily_amount:,}** créditos", inline=True)
-        embed.add_field(name="💳 Balance actual", value=f"**{db.get_credits(user_id):,}** créditos", inline=True)
-        embed.add_field(name="⏰ Próximo daily", value="En 24 horas", inline=False)
-        embed.set_footer(text="Vuelve mañana para otra recompensa")
+        embed.add_field(name="💰 Créditos base", value=f"**+{daily_base}** créditos", inline=True)
         
+        if bono_rango > 0:
+            embed.add_field(name="🎁 Bono de rango", value=f"**+{bono_rango}** créditos", inline=True)
+        
+        embed.add_field(name="💰 Total obtenido", value=f"**+{daily_total}** créditos", inline=True)
+        embed.add_field(name="💳 Balance actual", value=f"**{db.get_credits(user_id):,}** créditos", inline=False)
+        embed.add_field(name="🎯 Tu rango", value=f"**{rango_info['nombre']}**", inline=True)
+        embed.add_field(name="⏰ Próximo daily", value="En 24 horas", inline=True)
+        
+        # Mostrar bono del siguiente rango si existe
+        if rango_actual < max(RANGOS.keys()):
+            siguiente_rango = rango_actual + 1
+            if siguiente_rango in BONOS_RANGO:
+                bono_siguiente = BONOS_RANGO[siguiente_rango]
+                embed.add_field(
+                    name="🎪 Próximo Beneficio", 
+                    value=f"Alcanza **{RANGOS[siguiente_rango]['nombre']}** para:\nDaily: +{bono_siguiente['bono_daily']}\nMulti: x{bono_siguiente['multiplicador_ganancias']}", 
+                    inline=False
+                )
+        
+        embed.set_footer(text="Vuelve mañana para otra recompensa")
         await ctx.send(embed=embed)
-
-    @commands.command(name="leaderboard", aliases=["top", "ranking"])
-    async def leaderboard(self, ctx):
-        """Muestra el ranking de los 10 jugadores más ricos"""
-        try:
-            # Obtener top 10 usuarios por créditos
-            cursor = db.conn.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT user_id, credits, games_played, games_won 
-                FROM users 
-                ORDER BY credits DESC 
-                LIMIT 10
-            """)
-            top_users = cursor.fetchall()
-            cursor.close()
-            
-            embed = discord.Embed(
-                title="🏆 Leaderboard - Top 10 Más Ricos",
-                color=discord.Color.gold()
-            )
-            
-            if top_users:
-                leaderboard_text = ""
-                for i, user_data in enumerate(top_users, 1):
-                    user_id = user_data['user_id']
-                    
-                    # Intentar obtener el usuario de Discord
-                    user = self.bot.get_user(user_id)
-                    if user:
-                        username = f"@{user.display_name}"
-                    else:
-                        # Si no está en cache, intentar buscarlo
-                        try:
-                            user = await self.bot.fetch_user(user_id)
-                            username = f"@{user.display_name}"
-                        except:
-                            username = f"Usuario {user_id}"
-                    
-                    medal = ""
-                    if i == 1:
-                        medal = "🥇 "
-                    elif i == 2:
-                        medal = "🥈 "
-                    elif i == 3:
-                        medal = "🥉 "
-                    
-                    leaderboard_text += f"**{medal}{i}. {username}** - {user_data['credits']:,} créditos\n"
-                
-                embed.description = leaderboard_text
-            else:
-                embed.description = "No hay datos todavía. ¡Sé el primero en jugar!"
-            
-            await ctx.send(embed=embed)
-            
-        except Exception as e:
-            await ctx.send("❌ Error al cargar el leaderboard.")
-            print(f"Error en leaderboard: {e}")
 
     @commands.command(name="transfer", aliases=["pay"])
     async def transfer(self, ctx, member: discord.Member, amount: int):
@@ -152,9 +165,14 @@ class Economy(commands.Cog):
             await ctx.send(f"❌ No tienes suficientes créditos. Tu balance: {sender_credits:,}")
             return
         
+        # Aplicar multiplicador de rango si es ganancia para el receptor
+        rango_receptor = self.calcular_rango(db.get_credits(member.id))
+        multiplicador = BONOS_RANGO.get(rango_receptor, {"multiplicador_ganancias": 1.0})["multiplicador_ganancias"]
+        cantidad_final = int(amount * multiplicador) if multiplicador > 1.0 else amount
+        
         # Realizar transferencia
         db.update_credits(ctx.author.id, -amount, "transfer", "transfer", f"Transferido a {member.display_name}")
-        db.update_credits(member.id, amount, "transfer", "transfer", f"Recibido de {ctx.author.display_name}")
+        db.update_credits(member.id, cantidad_final, "transfer", "transfer", f"Recibido de {ctx.author.display_name}")
         
         embed = discord.Embed(
             title="💸 Transferencia Exitosa",
@@ -162,7 +180,11 @@ class Economy(commands.Cog):
         )
         embed.add_field(name="De", value=ctx.author.mention, inline=True)
         embed.add_field(name="Para", value=member.mention, inline=True)
-        embed.add_field(name="Cantidad", value=f"{amount:,} créditos", inline=True)
+        embed.add_field(name="Cantidad Enviada", value=f"{amount:,} créditos", inline=True)
+        
+        if cantidad_final > amount:
+            embed.add_field(name="🎁 Bono de Rango", value=f"Recibido: {cantidad_final:,} créditos (+{int((multiplicador-1)*100)}%)", inline=True)
+        
         embed.add_field(name="Tu nuevo balance", value=f"{db.get_credits(ctx.author.id):,} créditos", inline=False)
         
         await ctx.send(embed=embed)
@@ -180,14 +202,19 @@ class Economy(commands.Cog):
             await ctx.send("❌ El usuario objetivo no tiene suficientes créditos (mínimo 100).")
             return
         
+        # Aplicar multiplicador de rango al robo exitoso
+        rango_actual = self.calcular_rango(db.get_credits(ctx.author.id))
+        multiplicador = BONOS_RANGO.get(rango_actual, {"multiplicador_ganancias": 1.0})["multiplicador_ganancias"]
+        
         # 50% de probabilidad de éxito
         success = random.random() < 0.5
         max_rob = min(target_credits // 4, 1000)  # Robar hasta 25% o 1000 créditos
         amount = random.randint(100, max_rob)
+        amount_final = int(amount * multiplicador) if success and multiplicador > 1.0 else amount
         
         if success:
-            # Robo exitoso
-            db.update_credits(ctx.author.id, amount, "bonus", "rob", f"Robado a {member.display_name}")
+            # Robo exitoso con multiplicador
+            db.update_credits(ctx.author.id, amount_final, "bonus", "rob", f"Robado a {member.display_name}")
             db.update_credits(member.id, -amount, "loss", "rob", f"Robado por {ctx.author.display_name}")
             
             embed = discord.Embed(
@@ -195,6 +222,14 @@ class Economy(commands.Cog):
                 description=f"¡Le robaste {amount:,} créditos a {member.mention}!",
                 color=discord.Color.green()
             )
+            
+            if amount_final > amount:
+                embed.add_field(
+                    name="🎁 Bono de Rango", 
+                    value=f"Recibes: {amount_final:,} créditos (+{int((multiplicador-1)*100)}%)", 
+                    inline=True
+                )
+                
         else:
             # Robo fallido - multa
             fine = amount // 2
@@ -206,6 +241,32 @@ class Economy(commands.Cog):
                 color=discord.Color.red()
             )
         
+        await ctx.send(embed=embed)
+
+    @commands.command(name="rangos", aliases=["ranks", "niveles"])
+    async def rangos(self, ctx):
+        """Muestra todos los rangos disponibles y sus beneficios"""
+        embed = discord.Embed(
+            title="🎯 SISTEMA DE RANGOS DEL CASINO",
+            description="Mejora tu rango acumulando créditos y desbloquea beneficios exclusivos!",
+            color=0x00ff00
+        )
+        
+        for rango_id, rango_info in RANGOS.items():
+            beneficios = ""
+            if rango_id in BONOS_RANGO:
+                bono = BONOS_RANGO[rango_id]
+                beneficios = f"🎁 **Daily:** +{bono['bono_daily']} | ✨ **Multi:** x{bono['multiplicador_ganancias']}"
+            else:
+                beneficios = "🎁 **Daily:** +500 | ✨ **Multi:** x1.0"
+            
+            embed.add_field(
+                name=f"{rango_info['nombre']}",
+                value=f"**Mínimo:** {rango_info['min_creditos']:,} créditos\n{beneficios}",
+                inline=False
+            )
+        
+        embed.set_footer(text="Tu rango se actualiza automáticamente al ganar créditos")
         await ctx.send(embed=embed)
 
     @rob.error
@@ -222,3 +283,4 @@ class Economy(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))
+    

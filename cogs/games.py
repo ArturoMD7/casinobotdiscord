@@ -44,6 +44,41 @@ class Games(commands.Cog):
             inline=False
         )
         
+        # Sección de Carrera de Buses
+        embed.add_field(
+            name="🚌 **CARRERA DE BUSES**",
+            value=(
+                "```\n"
+                "🏁 CARRERA MULTIJUGADOR\n"
+                "   !carrera\n"
+                "   ¡Hasta 5 jugadores!\n"
+                "   El ganador se lleva el pozo\n"
+                "\n"
+                "📊 CONTROL DE CARRERAS\n"
+                "   !carreras       - Ver carreras activas\n"
+                "   !micarrera      - Ver tu carrera\n"
+                "```"
+            ),
+            inline=False
+        )
+        
+        # Sección de Sistema Gacha
+        embed.add_field(
+            name="🎁 **SISTEMA GACHA**",
+            value=(
+                "```\n"
+                "📦 CAJAS MISTERIOSAS\n"
+                "   !gacha          - Abrir caja misteriosa\n"
+                "   !gachastats     - Estadísticas del sistema\n"
+                "\n"
+                "🖼️ COLECCIÓN\n"
+                "   !micoleccion    - Ver tus items\n"
+                "   !misbonos       - Ver bonos activos\n"
+                "```"
+            ),
+            inline=False
+        )
+        
         # Sección de Juegos Clásicos
         embed.add_field(
             name="🎲 **JUEGOS CLÁSICOS**",
@@ -63,6 +98,15 @@ class Games(commands.Cog):
                 "   !dados <apuesta>\n"
                 "   !craps <apuesta>\n"
                 "   Apuesta: 10+ créditos\n"
+                "\n"
+                "🪙 CARA O CRUZ\n"
+                "   !moneda <apuesta> <cara/cruz>\n"
+                "   Apuesta: 10+ créditos\n"
+                "   Pago: 2x\n"
+                "\n"
+                "⚔️ DUELO DE MONEDA\n"
+                "   !duelomoneda @usuario <apuesta>\n"
+                "   ¡Duelo contra otro jugador!\n"
                 "```"
             ),
             inline=False
@@ -78,6 +122,9 @@ class Games(commands.Cog):
                 "\n"
                 "📊 ESTADÍSTICAS\n"
                 "   !stats\n"
+                "   !blackjackstats\n"
+                "   !monedastats\n"
+                "   !ruletainfo\n"
                 "\n"
                 "🎁 RECOMPENSA DIARIA\n"
                 "   !daily (cada 24h)\n"
@@ -91,6 +138,13 @@ class Games(commands.Cog):
                 "\n"
                 "🎭 ROBAR\n"
                 "   !rob @usuario (50% éxito)\n"
+                "\n"
+                "⭐ RANGOS Y BONOS\n"
+                "   !rangos          - Ver rangos disponibles\n"
+                "   !rango           - Tu rango actual\n"
+                "\n"
+                "⚙️ ADMIN\n"
+                "   !reload          - Recargar módulos (Owner)\n"
                 "```"
             ),
             inline=False
@@ -103,7 +157,8 @@ class Games(commands.Cog):
                 "• 💰 **Créditos iniciales:** 1,000\n"
                 "• 🎯 **Todos los juegos tienen apuesta mínima**\n"
                 "• ⚠️ **Juega responsablemente**\n"
-                "• 🆘 **Usa** `!help <comando>` **para más info**"
+                "• 🆘 **Usa** `!help <comando>` **para más info**\n"
+                "• 🆘 **Usa** `!helpgames <juego>` **para ayuda específica**"
             ),
             inline=False
         )
@@ -125,7 +180,7 @@ class Games(commands.Cog):
         if juego is None:
             embed = discord.Embed(
                 title="🎮 **AYUDA DE JUEGOS**",
-                description="Usa `!helpgames <juego>` para ayuda específica\n\n**Juegos disponibles:** `blackjack`, `ruletarusa`, `slots`, `ruleta`, `dados`",
+                description="Usa `!helpgames <juego>` para ayuda específica\n\n**Juegos disponibles:** `blackjack`, `ruletarusa`, `carrera`, `gacha`, `slots`, `ruleta`, `dados`, `moneda`",
                 color=0x0099ff
             )
             await ctx.send(embed=embed)
@@ -158,6 +213,7 @@ class Games(commands.Cog):
                     "!plantarse           - Plantarse\n"
                     "!doblar              - Doblar apuesta\n"
                     "!rendirse            - Rendirse (pierdes mitad)\n"
+                    "!blackjackstats      - Ver estadísticas\n"
                     "```"
                 ),
                 inline=False
@@ -198,6 +254,7 @@ class Games(commands.Cog):
                     "1. !ruletarusa <apuesta>\n"
                     "2. Usa botones para continuar o retirarte\n"
                     "3. ¡Sobrevive para multiplicar ganancias!\n"
+                    "4. !retirarse - Retirarte con ganancias\n"
                     "```"
                 ),
                 inline=False
@@ -215,6 +272,84 @@ class Games(commands.Cog):
                 inline=True
             )
             
+        elif juego in ["carrera", "carreras", "bus"]:
+            embed = discord.Embed(
+                title="🚌 **AYUDA - CARRERA DE BUSES**",
+                description="Carrera multijugador con hasta 5 participantes",
+                color=0xff6600
+            )
+            embed.add_field(
+                name="🎯 **REGLAS**",
+                value=(
+                    "• **Máximo 5 jugadores** por carrera\n"
+                    "• Todos apuestan la misma cantidad\n"
+                    "• **El ganador se lleva todo el pozo**\n"
+                    "• Sistema de boost y eventos aleatorios\n"
+                    "• El último bus en llegar pierde su apuesta"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="💰 **COMANDOS**",
+                value=(
+                    "```\n"
+                    "!carrera        - Iniciar/Unirse a carrera\n"
+                    "!carreras       - Ver carreras activas\n"
+                    "!micarrera      - Ver tu carrera actual\n"
+                    "```"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="🏆 **PREMIOS**",
+                value=(
+                    "• **1er lugar:** Todo el pozo\n"
+                    "• **Eventos:** Bonos aleatorios\n"
+                    "• **Boost:** Ventajas temporales"
+                ),
+                inline=True
+            )
+            
+        elif juego in ["gacha", "caja", "misteriosa"]:
+            embed = discord.Embed(
+                title="🎁 **AYUDA - SISTEMA GACHA**",
+                description="Sistema de cajas misteriosas con items épicos",
+                color=0xff00ff
+            )
+            embed.add_field(
+                name="🎯 **REGLAS**",
+                value=(
+                    "• **Diferentes rarezas:** Común, Raro, Épico, Legendario\n"
+                    "• **Items coleccionables** únicos\n"
+                    "• **Bonos temporales** de beneficios\n"
+                    "• **Sistema de pity** para items raros\n"
+                    "• **Colección completa** da recompensas especiales"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="💰 **COMANDOS**",
+                value=(
+                    "```\n"
+                    "!gacha          - Abrir caja misteriosa\n"
+                    "!gachastats     - Stats del sistema\n"
+                    "!micoleccion    - Tu colección de items\n"
+                    "!misbonos       - Tus bonos activos\n"
+                    "```"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="📊 **RAREZAS**",
+                value=(
+                    "• **Común:** 60% probabilidad\n"
+                    "• **Raro:** 25% probabilidad\n"
+                    "• **Épico:** 10% probabilidad\n"
+                    "• **Legendario:** 5% probabilidad"
+                ),
+                inline=True
+            )
+            
         elif juego in ["slots", "traga", "slot"]:
             embed = discord.Embed(
                 title="🎰 **AYUDA - TRAGAMONEDAS**",
@@ -226,7 +361,8 @@ class Games(commands.Cog):
                 value=(
                     "• Gira los 3 rodillos para hacer combinaciones\n"
                     "• Múltiples combinaciones ganadoras\n"
-                    "• Símbolos especiales pagan más"
+                    "• Símbolos especiales pagan más\n"
+                    "• **Jackpot progresivo** disponible"
                 ),
                 inline=False
             )
@@ -241,6 +377,16 @@ class Games(commands.Cog):
                 ),
                 inline=False
             )
+            embed.add_field(
+                name="🎯 **COMBINACIONES**",
+                value=(
+                    "• **3 iguales:** x5 a x100\n"
+                    "• **2 iguales:** x2\n"
+                    "• **Secuencias:** x10 a x50\n"
+                    "• **Jackpot:** x1000"
+                ),
+                inline=True
+            )
             
         elif juego in ["ruleta", "roulette"]:
             embed = discord.Embed(
@@ -254,6 +400,7 @@ class Games(commands.Cog):
                     "• **Color:** rojo/negro → **x2**\n"
                     "• **Par/Impar:** → **x2**\n"
                     "• **Docena:** 1/2/3 → **x3**\n"
+                    "• **Columna:** → **x3**\n"
                     "• **Número específico:** 0-36 → **x36**"
                 ),
                 inline=False
@@ -270,6 +417,16 @@ class Games(commands.Cog):
                 ),
                 inline=False
             )
+            embed.add_field(
+                name="📊 **INFORMACIÓN**",
+                value=(
+                    "• **Ruleta Europea:** 0-36\n"
+                    "• **Usa** `!ruletainfo` para stats\n"
+                    "• **Probabilidad número:** 2.7%\n"
+                    "• **Probabilidad color:** 48.6%"
+                ),
+                inline=True
+            )
             
         elif juego in ["dados", "craps"]:
             embed = discord.Embed(
@@ -280,10 +437,11 @@ class Games(commands.Cog):
             embed.add_field(
                 name="🎯 **REGLAS**",
                 value=(
-                    "• Tiras 2 dados\n"
+                    "• Tiras 2 dados de 6 caras\n"
                     "• **Ganas con:** 7 u 11\n"
                     "• **Pierdes con:** 2, 3 o 12\n"
-                    "• **Otros números:** punto (juego continúa)"
+                    "• **Otros números:** punto (juego continúa)\n"
+                    "• **Pago:** 2x tu apuesta"
                 ),
                 inline=False
             )
@@ -294,16 +452,64 @@ class Games(commands.Cog):
                     "!dados <apuesta>\n"
                     "!craps <apuesta>\n"
                     "Apuesta mínima: 10 créditos\n"
-                    "Pago: 2x tu apuesta\n"
                     "```"
                 ),
                 inline=False
+            )
+            embed.add_field(
+                name="🎯 **PROBABILIDADES**",
+                value=(
+                    "• **Ganar en 1ra:** 22.2%\n"
+                    "• **Perder en 1ra:** 11.1%\n"
+                    "• **Punto:** 66.7%\n"
+                    "• **Ventaja casa:** 1.41%"
+                ),
+                inline=True
+            )
+            
+        elif juego in ["moneda", "caraocruz", "coin"]:
+            embed = discord.Embed(
+                title="🪙 **AYUDA - CARA O CRUZ**",
+                description="Juego simple de azar contra la casa o otros jugadores",
+                color=0xffcc00
+            )
+            embed.add_field(
+                name="🎯 **MODOS DE JUEGO**",
+                value=(
+                    "• **Contra la casa:** !moneda <apuesta> <cara/cruz>\n"
+                    "• **Duelo:** !duelomoneda @usuario <apuesta>\n"
+                    "• **Pago normal:** 2x tu apuesta\n"
+                    "• **50% de probabilidad** de ganar\n"
+                    "• **Estadísticas:** !monedastats"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="💰 **EJEMPLOS**",
+                value=(
+                    "```\n"
+                    "!moneda 100 cara\n"
+                    "!moneda 50 cruz\n"
+                    "!duelomoneda @amigo 200\n"
+                    "```"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="📊 **ESTADÍSTICAS**",
+                value=(
+                    "• **Probabilidad:** 50%\n"
+                    "• **Pago:** 2:1\n"
+                    "• **Mínimo:** 10 créditos\n"
+                    "• **Máximo:** Sin límite"
+                ),
+                inline=True
             )
             
         else:
             embed = discord.Embed(
                 title="❌ JUEGO NO ENCONTRADO",
-                description=f"El juego `{juego}` no existe.\nUsa `!helpgames` para ver la lista.",
+                description=f"El juego `{juego}` no existe.\nUsa `!helpgames` para ver la lista completa.",
                 color=0xff0000
             )
             await ctx.send(embed=embed)

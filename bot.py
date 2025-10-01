@@ -22,7 +22,11 @@ async def load_cogs():
         "cogs.ruleta",
         "cogs.dados",
         "cogs.revolver",
-        "cogs.games"
+        "cogs.games",
+        "cogs.carrera",
+        "cogs.rangos",
+        "cogs.moneda",
+        "cogs.gacha"
     ]
     
     for cog in cogs:
