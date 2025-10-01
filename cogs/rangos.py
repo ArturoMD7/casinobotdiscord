@@ -19,19 +19,32 @@ class Rangos(commands.Cog):
                 break
         return rango_actual
 
-    def actualizar_rango_usuario(self, user_id: int):
-        """Actualiza el rango de un usuario si es necesario"""
+    def actualizar_rango_usuario(self, user_id: int) -> int:
+        """Actualiza el rango de un usuario si es necesario y devuelve el nuevo rango"""
         try:
             credits = db.get_credits(user_id)
-            rango_actual = self.calcular_rango(credits)
+            nuevo_rango = self.calcular_rango(credits)
             
-            # Actualizar en la base de datos
+            # Obtener el rango actual desde la base de datos
             cursor = db.conn.cursor()
-            cursor.execute("UPDATE users SET rango = %s WHERE user_id = %s", (rango_actual, user_id))
-            db.conn.commit()
-            cursor.close()
+            cursor.execute("SELECT rango FROM users WHERE user_id = %s", (user_id,))
+            resultado = cursor.fetchone()
+            rango_actual = resultado[0] if resultado else 0
             
-            return rango_actual
+            # Solo actualizar si el rango cambió
+            if nuevo_rango != rango_actual:
+                cursor.execute("UPDATE users SET rango = %s WHERE user_id = %s", (nuevo_rango, user_id))
+                db.conn.commit()
+                
+                # Si subió de rango, aplicar bono de bienvenida (opcional)
+                if nuevo_rango > rango_actual:
+                    bono = BONOS_RANGO.get(nuevo_rango, {}).get('bono_subida', 0)
+                    if bono > 0:
+                        db.update_credits(user_id, bono, "bonus", "rango_up", f"Bono por subir a rango {nuevo_rango}")
+            
+            cursor.close()
+            return nuevo_rango
+            
         except Exception as e:
             print(f"Error actualizando rango: {e}")
             return 0
@@ -42,6 +55,9 @@ class Rangos(commands.Cog):
             return 100, 0, 0  # Rango máximo alcanzado
         
         siguiente_rango = rango_actual + 1
+        if siguiente_rango not in RANGOS:
+            return 100, 0, 0
+        
         credito_actual = creditos
         credito_objetivo = RANGOS[siguiente_rango]["min_creditos"]
         credito_anterior = RANGOS[rango_actual]["min_creditos"]
@@ -69,11 +85,10 @@ class Rangos(commands.Cog):
             usuario = ctx.author
         
         user_id = usuario.id
-        credits = db.get_credits(user_id)
-        rango_actual = self.calcular_rango(credits)
         
-        # Actualizar en base de datos
-        self.actualizar_rango_usuario(user_id)
+        # Forzar actualización del rango antes de mostrar
+        rango_actual = self.actualizar_rango_usuario(user_id)
+        credits = db.get_credits(user_id)
         
         rango_info = RANGOS[rango_actual]
         porcentaje, credito_objetivo, progreso_actual = self.obtener_progreso_rango(credits, rango_actual)
@@ -143,7 +158,24 @@ class Rangos(commands.Cog):
     async def top(self, ctx, tipo: str = "creditos"):
         """Muestra el leaderboard de jugadores"""
         try:
+            # Primero, actualizar todos los rangos de los usuarios en el top
             if tipo.lower() in ["creditos", "credits", "money"]:
+                cursor = db.conn.cursor(dictionary=True)
+                cursor.execute("""
+                    SELECT user_id, credits, rango 
+                    FROM users 
+                    WHERE credits > 0 
+                    ORDER BY credits DESC 
+                    LIMIT 15
+                """)
+                top_users = cursor.fetchall()
+                cursor.close()
+                
+                # Actualizar rangos antes de mostrar
+                for user_data in top_users:
+                    self.actualizar_rango_usuario(user_data['user_id'])
+                
+                # Volver a obtener los datos actualizados
                 cursor = db.conn.cursor(dictionary=True)
                 cursor.execute("""
                     SELECT user_id, credits, rango 
@@ -161,6 +193,22 @@ class Rangos(commands.Cog):
                 )
                 
             elif tipo.lower() in ["rango", "rank", "nivel"]:
+                cursor = db.conn.cursor(dictionary=True)
+                cursor.execute("""
+                    SELECT user_id, credits, rango 
+                    FROM users 
+                    WHERE credits > 0 
+                    ORDER BY credits DESC 
+                    LIMIT 15
+                """)
+                top_users = cursor.fetchall()
+                cursor.close()
+                
+                # Actualizar rangos antes de mostrar
+                for user_data in top_users:
+                    self.actualizar_rango_usuario(user_data['user_id'])
+                
+                # Volver a obtener los datos actualizados ordenados por rango
                 cursor = db.conn.cursor(dictionary=True)
                 cursor.execute("""
                     SELECT user_id, credits, rango 
@@ -229,6 +277,14 @@ class Rangos(commands.Cog):
         except Exception as e:
             await ctx.send("❌ Error al cargar el leaderboard.")
             print(f"Error en top: {e}")
+
+    @commands.Cog.listener()
+    async def on_command_completion(self, ctx):
+        """Actualiza el rango después de cualquier comando que modifique créditos"""
+        if ctx.command and ctx.command.name in ['daily', 'apostar', 'transferir', 'ruletarusa']:
+            # Pequeña demora para asegurar que los créditos se actualizaron
+            await asyncio.sleep(1)
+            self.actualizar_rango_usuario(ctx.author.id)
 
 async def setup(bot):
     await bot.add_cog(Rangos(bot))
