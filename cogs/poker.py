@@ -203,37 +203,49 @@ class PokerGameView(View):
             # Hay un ganador
             await self.finalizar_juego(interaction, resultado)
     
-    async def finalizar_juego(self, interaction: discord.Interaction, ganador_id: int):
+    async def finalizar_juego(self, interaction: discord.Interaction, resultados: List[Tuple[int, int]]):
         game = poker_games.get(self.game_id)
         if not game:
             return
         
-        if ganador_id:
-            ganador = game.players[ganador_id]
+        if resultados:
+            # Obtener información de las manos
+            info_manos = game.obtener_info_manos()
+            
             embed = discord.Embed(
-                title="🎉 ¡Tenemos un Ganador!",
-                description=f"**{ganador['name']}** gana el bote de **{game.pot}** fichas!",
+                title="🎉 ¡Showdown! - Resultados Finales",
                 color=0x00ff00
             )
+            
+            # Mostrar información de cada mano
+            for nombre, nombre_mano, cartas in info_manos:
+                embed.add_field(
+                    name=f"🎴 {nombre}",
+                    value=f"Mano: {' '.join(cartas)}\n**{nombre_mano}**",
+                    inline=False
+                )
+            
+            # Mostrar ganadores
+            ganadores_texto = []
+            for ganador_id, premio in resultados:
+                ganador = game.players[ganador_id]
+                ganadores_texto.append(f"**{ganador['name']}** - {premio:,} créditos")
+            
+            embed.add_field(
+                name="🏆 Ganadores",
+                value="\n".join(ganadores_texto) if ganadores_texto else "No hay ganadores",
+                inline=False
+            )
+            
         else:
             embed = discord.Embed(
                 title="🎮 Juego Terminado",
-                description="El juego ha finalizado.",
+                description="El juego ha finalizado sin ganadores.",
                 color=0xff9900
             )
         
-        # Mostrar cartas de todos
-        if game.players:
-            manos_texto = []
-            for player in game.players.values():
-                cartas = " ".join(player['hand'])
-                manos_texto.append(f"**{player['name']}**: {cartas}")
-            
-            embed.add_field(name="🎴 Manos Finales", value="\n".join(manos_texto), inline=False)
-        
-        # Eliminar juego o preparar para siguiente ronda
+        # Eliminar juego
         if self.game_id in poker_games:
-            # Por ahora, eliminamos el juego. Podrías implementar rondas múltiples
             del poker_games[self.game_id]
         
         await interaction.response.edit_message(embed=embed, view=None)
