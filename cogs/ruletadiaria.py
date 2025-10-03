@@ -75,90 +75,109 @@ class RuletaDiariaView(View):
         embed_giro.add_field(name="🎯 Premios", value="20 premios diferentes", inline=True)
         embed_giro.set_footer(text="¡Buena suerte!")
         
+        # IMPORTANTE: Usar response.edit_message en lugar de edit_original_response
         await interaction.response.edit_message(embed=embed_giro, view=None)
         await asyncio.sleep(3)
         
         # Obtener premio aleatorio
         premio = random.choice(RULETA_DIARIA["premios"])
-        await self.entregar_premio(interaction, premio, user_id)
         
-        # Aplicar cooldown
-        cooldowns_ruleta[user_id] = time.time() + RULETA_DIARIA["cooldown"]
+        # Entregar premio
+        success = await self.entregar_premio(interaction, premio, user_id)
+        
+        if success:
+            # Solo aplicar cooldown si el premio se entregó correctamente
+            cooldowns_ruleta[user_id] = time.time() + RULETA_DIARIA["cooldown"]
 
-    async def entregar_premio(self, interaction: discord.Interaction, premio: dict, user_id: int):
-        mensaje_resultado = ""
-        
-        # Procesar premio según tipo
-        if premio["tipo"] == "creditos":
-            ganancia_final = premio["valor"]
+    async def entregar_premio(self, interaction: discord.Interaction, premio: dict, user_id: int) -> bool:
+        try:
+            mensaje_resultado = ""
             
-            db.update_credits(user_id, ganancia_final, "bonus", "ruleta_diaria", f"Ruleta: {premio['nombre']}")
-            mensaje_resultado = f"**+{ganancia_final:,} créditos**"
-            
-        elif premio["tipo"] == "multiplicador":
-            # Activar multiplicador temporal usando el sistema del GACHA
-            gacha_cog = interaction.client.get_cog('Gacha')
-            if gacha_cog:
-                # Guardar el multiplicador en el sistema del Gacha
-                if not hasattr(gacha_cog, 'bonos_activos'):
-                    gacha_cog.bonos_activos = {}
+            # Procesar premio según tipo
+            if premio["tipo"] == "creditos":
+                ganancia_final = premio["valor"]
                 
-                if user_id not in gacha_cog.bonos_activos:
-                    gacha_cog.bonos_activos[user_id] = {}
+                db.update_credits(user_id, ganancia_final, "bonus", "ruleta_diaria", f"Ruleta: {premio['nombre']}")
+                mensaje_resultado = f"**+{ganancia_final:,} créditos**"
                 
-                gacha_cog.bonos_activos[user_id]["multiplicador"] = {
-                    "valor": premio["valor"],
-                    "expiracion": time.time() + premio["duracion"],
-                    "nombre": premio["nombre"],
-                    "origen": "ruleta"  # Identificar que viene de la ruleta
-                }
-            
-            duracion_minutos = premio["duracion"] // 60
-            mensaje_resultado = f"**{premio['nombre']}** por {duracion_minutos} minutos"
+            elif premio["tipo"] == "multiplicador":
+                # Activar multiplicador temporal usando el sistema del GACHA
+                gacha_cog = interaction.client.get_cog('Gacha')
+                if gacha_cog and hasattr(gacha_cog, 'bonos_activos'):
+                    # Guardar el multiplicador en el sistema del Gacha
+                    if user_id not in gacha_cog.bonos_activos:
+                        gacha_cog.bonos_activos[user_id] = {}
+                    
+                    gacha_cog.bonos_activos[user_id]["multiplicador"] = {
+                        "valor": premio["valor"],
+                        "expiracion": time.time() + premio["duracion"],
+                        "nombre": premio["nombre"],
+                        "origen": "ruleta"  # Identificar que viene de la ruleta
+                    }
+                
+                duracion_minutos = premio["duracion"] // 60
+                mensaje_resultado = f"**{premio['nombre']}** por {duracion_minutos} minutos"
+            else:
+                # Tipo de premio no reconocido
+                return False
 
-        # Crear embed de resultado
-        embed_resultado = discord.Embed(
-            title=f"{premio['emoji']} **{premio['nombre']}** {premio['emoji']}",
-            description=f"¡Has ganado: {mensaje_resultado}!",
-            color=premio["color"]
-        )
-        
-        embed_resultado.add_field(name="🎁 Tipo de premio", value=premio["nombre"], inline=True)
-        embed_resultado.add_field(name="🎰 Ruleta diaria", value="Giro gratuito", inline=True)
-        
-        # Mostrar información adicional según el premio
-        if premio["tipo"] == "multiplicador":
-            embed_resultado.add_field(
-                name="⏰ Duración", 
-                value=f"{premio['duracion'] // 60} minutos", 
-                inline=True
+            # Crear embed de resultado
+            embed_resultado = discord.Embed(
+                title=f"{premio['emoji']} **{premio['nombre']}** {premio['emoji']}",
+                description=f"¡Has ganado: {mensaje_resultado}!",
+                color=premio["color"]
             )
+            
+            embed_resultado.add_field(name="🎁 Tipo de premio", value=premio["nombre"], inline=True)
+            embed_resultado.add_field(name="🎰 Ruleta diaria", value="Giro gratuito", inline=True)
+            
+            # Mostrar información adicional según el premio
+            if premio["tipo"] == "multiplicador":
+                embed_resultado.add_field(
+                    name="⏰ Duración", 
+                    value=f"{premio['duracion'] // 60} minutos", 
+                    inline=True
+                )
+                embed_resultado.add_field(
+                    name="💡 ¿Cómo funciona?", 
+                    value="Se aplicará automáticamente a tus ganancias en TODOS los juegos", 
+                    inline=False
+                )
+            
+            # Información sobre el próximo giro
+            proximo_giro_timestamp = time.time() + RULETA_DIARIA["cooldown"]
+            proximo_giro = time.strftime("%d/%m/%Y a las %H:%M", time.localtime(proximo_giro_timestamp))
             embed_resultado.add_field(
-                name="💡 ¿Cómo funciona?", 
-                value="Se aplicará automáticamente a tus ganancias en TODOS los juegos", 
+                name="⏰ Próximo giro disponible", 
+                value=f"{proximo_giro}", 
                 inline=False
             )
-        
-        # Información sobre el próximo giro
-        proximo_giro = time.strftime("%d/%m/%Y a las %H:%M", time.localtime(cooldowns_ruleta[user_id]))
-        embed_resultado.add_field(
-            name="⏰ Próximo giro disponible", 
-            value=f"{proximo_giro}", 
-            inline=False
-        )
-        
-        # Efectos especiales para premios grandes
-        if premio["valor"] in [50000, 20000] or premio["tipo"] == "multiplicador" and premio["valor"] == 3.0:
-            embed_resultado.set_image(url="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExdzlvaTNsYTUxdmZvODA1YnJzbG5iYXRzdDhpZmk5a2lzZ2ZhbXQ2MiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Y3qaJQjDcbJPyK7kGk/giphy.gif")
-        
-        await interaction.edit_original_response(embed=embed_resultado)
+            
+            # Efectos especiales para premios grandes
+            if premio["valor"] in [50000, 20000] or premio["tipo"] == "multiplicador" and premio["valor"] == 3.0:
+                embed_resultado.set_image(url="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExdzlvaTNsYTUxdmZvODA1YnJzbG5iYXRzdDhpZmk5a2lzZ2ZhbXQ2MiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Y3qaJQjDcbJPyK7kGk/giphy.gif")
+            
+            # IMPORTANTE: Editar el mensaje original usando interaction.message.edit()
+            await interaction.message.edit(embed=embed_resultado, view=None)
+            return True
+            
+        except Exception as e:
+            print(f"Error entregando premio de ruleta: {e}")
+            # En caso de error, mostrar mensaje de error
+            embed_error = discord.Embed(
+                title="❌ Error en la Ruleta",
+                description="Ha ocurrido un error al procesar tu premio. Por favor, intenta nuevamente.",
+                color=0xff0000
+            )
+            await interaction.message.edit(embed=embed_error, view=None)
+            return False
 
 class RuletaDiaria(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @commands.command(name="megaruleta", aliases=["mega", "ruletadiaria"])
-    async def mega_ruleta(self, ctx):  # CAMBIÉ EL NOMBRE DEL MÉTODO A mega_ruleta
+    async def mega_ruleta(self, ctx):
         """🎡 Gira la ruleta diaria para ganar premios increíbles"""
         user_id = ctx.author.id
         
@@ -207,11 +226,11 @@ class RuletaDiaria(commands.Cog):
         
         # Mostrar multiplicador activo si existe (del Gacha)
         gacha_cog = self.bot.get_cog('Gacha')
-        if gacha_cog:
+        if gacha_cog and hasattr(gacha_cog, 'obtener_multiplicador_activo'):
             multiplicador_activo = gacha_cog.obtener_multiplicador_activo(user_id)
             if multiplicador_activo > 1.0:
                 # Verificar si es de la ruleta
-                if user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[user_id]:
+                if hasattr(gacha_cog, 'bonos_activos') and user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[user_id]:
                     multiplicador_info = gacha_cog.bonos_activos[user_id]["multiplicador"]
                     tiempo_restante = int((multiplicador_info["expiracion"] - time.time()) // 60)
                     origen = multiplicador_info.get("origen", "gacha")
@@ -244,7 +263,7 @@ class RuletaDiaria(commands.Cog):
         user_id = ctx.author.id
         
         gacha_cog = self.bot.get_cog('Gacha')
-        if not gacha_cog:
+        if not gacha_cog or not hasattr(gacha_cog, 'obtener_multiplicador_activo'):
             await ctx.send("❌ El sistema de bonos no está disponible en este momento.")
             return
         
@@ -255,7 +274,7 @@ class RuletaDiaria(commands.Cog):
             return
         
         # Verificar si el multiplicador activo es de la ruleta
-        if user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[user_id]:
+        if hasattr(gacha_cog, 'bonos_activos') and user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[user_id]:
             multiplicador_info = gacha_cog.bonos_activos[user_id]["multiplicador"]
             origen = multiplicador_info.get("origen", "gacha")
             
