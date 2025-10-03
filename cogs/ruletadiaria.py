@@ -149,7 +149,7 @@ class RuletaDiariaView(View):
         
         # Efectos especiales para premios grandes
         if premio["valor"] in [50000, 20000] or premio["tipo"] == "multiplicador" and premio["valor"] == 3.0:
-            embed_resultado.set_image(url="https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif")
+            embed_resultado.set_image(url="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExdzlvaTNsYTUxdmZvODA1YnJzbG5iYXRzdDhpZmk5a2lzZ2ZhbXQ2MiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Y3qaJQjDcbJPyK7kGk/giphy.gif")
         
         await interaction.edit_original_response(embed=embed_resultado)
 
@@ -158,7 +158,7 @@ class RuletaDiaria(commands.Cog):
         self.bot = bot
 
     @commands.command(name="megaruleta", aliases=["mega", "ruletadiaria"])
-    async def ruleta(self, ctx):
+    async def mega_ruleta(self, ctx):  # CAMBIÉ EL NOMBRE DEL MÉTODO A mega_ruleta
         """🎡 Gira la ruleta diaria para ganar premios increíbles"""
         user_id = ctx.author.id
         
