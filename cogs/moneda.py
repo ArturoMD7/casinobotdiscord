@@ -53,17 +53,22 @@ class MonedaView(View):
             mensaje = f"🎉 **¡GANASTE!** La moneda cayó en **{resultado}** {emoji_resultado}"
             tipo_transaccion = "win"
             
-            # APLICAR MULTIPLICADOR DEL GACHA
+            # APLICAR MULTIPLICADOR DEL GACHA (SISTEMA POR USOS)
             multiplicador_gacha = 1.0
             gacha_cog = interaction.client.get_cog('Gacha')
-            
+
             if gacha_cog:
                 multiplicador_gacha = gacha_cog.obtener_multiplicador_activo(self.user_id)
                 if multiplicador_gacha > 1.0:
-                    # Aplicar multiplicador del Gacha a la ganancia
+                    # Aplicar multiplicador del Gacha a la ganancia (esto consume usos automáticamente)
                     ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(self.user_id, ganancia_base)
                     mensaje += f"\n✨ **BONO GACHA:** {ganancia_base:,} → **{ganancia_final:,}** créditos (x{multiplicador_gacha})"
                     ganancia_neto = ganancia_final
+                    
+                    # Mostrar usos restantes si hay multiplicador activo
+                    if self.user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[self.user_id]:
+                        usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
+                        mensaje += f" | Usos restantes: {usos_restantes}"
                 else:
                     ganancia_neto = ganancia_base
             else:
@@ -91,18 +96,15 @@ class MonedaView(View):
         if ganancia_neto > 0 and multiplicador_gacha > 1.0:
             embed.add_field(name="💸 Ganancia base", value=f"**+{ganancia_base:,}** créditos", inline=True)
             embed.add_field(name="✨ Ganancia final", value=f"**+{ganancia_neto:,}** créditos (x{multiplicador_gacha})", inline=True)
+            
+            # Mostrar usos restantes
+            if gacha_cog and self.user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[self.user_id]:
+                usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
+                embed.add_field(name="🔢 Usos restantes", value=f"**{usos_restantes}** usos", inline=True)
         else:
             embed.add_field(name="💸 Resultado", value=f"**{'+' if ganancia_neto > 0 else ''}{ganancia_neto:,}** créditos", inline=True)
         
         embed.add_field(name="💳 Balance nuevo", value=f"**{db.get_credits(self.user_id):,}** créditos", inline=True)
-        
-        # Mostrar información del multiplicador si está activo
-        if multiplicador_gacha > 1.0:
-            embed.add_field(
-                name="🎰 Multiplicador Activo", 
-                value=f"**x{multiplicador_gacha}** aplicado a tu ganancia", 
-                inline=False
-            )
         
         await interaction.response.edit_message(embed=embed, view=None)
 
@@ -136,7 +138,7 @@ class MonedaView(View):
         ganador_creador = duelo['eleccion_creador'] == resultado
         ganador_oponente = duelo['eleccion_oponente'] == resultado
 
-        # APLICAR MULTIPLICADORES DEL GACHA A AMBOS JUGADORES
+        # APLICAR MULTIPLICADORES DEL GACHA A AMBOS JUGADORES (SISTEMA POR USOS)
         gacha_cog = interaction.client.get_cog('Gacha')
         multiplicador_creador = 1.0
         multiplicador_oponente = 1.0
@@ -150,7 +152,7 @@ class MonedaView(View):
             # Empate - ambos ganan (raro pero posible)
             resultado_texto = "🤝 **EMPATE** - Ambos ganan!"
             
-            # Aplicar multiplicadores a las ganancias
+            # Aplicar multiplicadores a las ganancias (esto consume usos automáticamente)
             ganancia_creador_base = duelo['apuesta']
             ganancia_oponente_base = duelo['apuesta']
             
@@ -214,9 +216,11 @@ class MonedaView(View):
         # Mostrar multiplicadores aplicados si los hay
         info_multiplicadores = []
         if multiplicador_creador > 1.0 and ganador_creador:
-            info_multiplicadores.append(f"**{duelo['creador_nombre']}**: x{multiplicador_creador}")
+            usos_restantes_creador = gacha_cog.bonos_activos.get(duelo['creador_id'], {}).get('multiplicador', {}).get('usos_restantes', 0)
+            info_multiplicadores.append(f"**{duelo['creador_nombre']}**: x{multiplicador_creador} (usos restantes: {usos_restantes_creador})")
         if multiplicador_oponente > 1.0 and ganador_oponente:
-            info_multiplicadores.append(f"**{duelo['oponente_nombre']}**: x{multiplicador_oponente}")
+            usos_restantes_oponente = gacha_cog.bonos_activos.get(duelo['oponente_id'], {}).get('multiplicador', {}).get('usos_restantes', 0)
+            info_multiplicadores.append(f"**{duelo['oponente_nombre']}**: x{multiplicador_oponente} (usos restantes: {usos_restantes_oponente})")
             
         if info_multiplicadores:
             embed.add_field(
@@ -231,6 +235,8 @@ class MonedaView(View):
         # Editar mensaje original
         original_message = await interaction.channel.fetch_message(duelo['mensaje_id'])
         await original_message.edit(embed=embed, view=None)
+
+# ... (el resto del código de MonedaDueloView y Moneda cog se mantiene igual)
 
 class MonedaDueloView(View):
     def __init__(self, creador_id, creador_nombre, oponente_id, oponente_nombre, apuesta, mensaje_id):

@@ -28,7 +28,8 @@ async def load_cogs():
         "cogs.moneda",
         "cogs.gacha",
         "cogs.ruletadiaria",
-        "cogs.poker" 
+        "cogs.poker",
+        "cogs.videopoker"
     ]
     
     for cog in cogs:

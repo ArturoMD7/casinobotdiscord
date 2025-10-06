@@ -9,7 +9,7 @@ import math
 
 db = Database()
 
-# Sistema de Gacha simplificado - Solo créditos y multiplicadores
+# Sistema de Gacha modificado - Multiplicadores por usos en lugar de tiempo
 SISTEMA_GACHA = {
     "cajas": {
         "basica": {
@@ -20,7 +20,7 @@ SISTEMA_GACHA = {
                 {"tipo": "creditos", "valor": 50, "prob": 0.50, "emoji": "💰", "nombre": "Créditos Pequeños", "rareza": "comun"},
                 {"tipo": "creditos", "valor": 100, "prob": 0.30, "emoji": "💰", "nombre": "Créditos Medianos", "rareza": "comun"},
                 {"tipo": "creditos", "valor": 200, "prob": 0.15, "emoji": "💰", "nombre": "Créditos Grandes", "rareza": "raro"},
-                {"tipo": "multiplicador", "valor": 1.25, "prob": 0.05, "emoji": "✨", "nombre": "Multiplicador x1.25", "rareza": "raro", "duracion": 3600}
+                {"tipo": "multiplicador", "valor": 1.25, "prob": 0.05, "emoji": "✨", "nombre": "Multiplicador x1.25", "rareza": "raro", "usos": 5}
             ]
         },
         "premium": {
@@ -30,8 +30,8 @@ SISTEMA_GACHA = {
             "probabilidades": [
                 {"tipo": "creditos", "valor": 200, "prob": 0.35, "emoji": "💰", "nombre": "Créditos Decentes", "rareza": "comun"},
                 {"tipo": "creditos", "valor": 500, "prob": 0.25, "emoji": "💰", "nombre": "Créditos Buenos", "rareza": "raro"},
-                {"tipo": "multiplicador", "valor": 1.5, "prob": 0.20, "emoji": "✨", "nombre": "Multiplicador x1.5", "rareza": "raro", "duracion": 3600},
-                {"tipo": "multiplicador", "valor": 1.75, "prob": 0.15, "emoji": "✨", "nombre": "Multiplicador x1.75", "rareza": "epico", "duracion": 3600},
+                {"tipo": "multiplicador", "valor": 1.5, "prob": 0.20, "emoji": "✨", "nombre": "Multiplicador x1.5", "rareza": "raro", "usos": 8},
+                {"tipo": "multiplicador", "valor": 1.75, "prob": 0.15, "emoji": "✨", "nombre": "Multiplicador x1.75", "rareza": "epico", "usos": 12},
                 {"tipo": "creditos", "valor": 1000, "prob": 0.05, "emoji": "💎", "nombre": "BOLSA PREMIUM", "rareza": "epico"}
             ]
         },
@@ -41,10 +41,10 @@ SISTEMA_GACHA = {
             "cooldown": 86400,  # 24 horas
             "probabilidades": [
                 {"tipo": "creditos", "valor": 1000, "prob": 0.30, "emoji": "💰", "nombre": "Fortuna Pequeña", "rareza": "raro"},
-                {"tipo": "multiplicador", "valor": 2.0, "prob": 0.25, "emoji": "✨", "nombre": "Multiplicador x2.0", "rareza": "epico", "duracion": 7200},
-                {"tipo": "multiplicador", "valor": 2.5, "prob": 0.20, "emoji": "✨", "nombre": "Multiplicador x2.5", "rareza": "legendario", "duracion": 7200},
+                {"tipo": "multiplicador", "valor": 2.0, "prob": 0.25, "emoji": "✨", "nombre": "Multiplicador x2.0", "rareza": "epico", "usos": 15},
+                {"tipo": "multiplicador", "valor": 2.5, "prob": 0.20, "emoji": "✨", "nombre": "Multiplicador x2.5", "rareza": "legendario", "usos": 10},
                 {"tipo": "creditos", "valor": 5000, "prob": 0.15, "emoji": "💎", "nombre": "TESORO ÉPICO", "rareza": "legendario"},
-                {"tipo": "multiplicador", "valor": 3.0, "prob": 0.10, "emoji": "🎊", "nombre": "MULTIPLICADOR LEGENDARIO x3.0", "rareza": "mitico", "duracion": 3600}
+                {"tipo": "multiplicador", "valor": 3.0, "prob": 0.10, "emoji": "🎊", "nombre": "MULTIPLICADOR LEGENDARIO x3.0", "rareza": "mitico", "usos": 10}
             ]
         }
     },
@@ -145,18 +145,20 @@ class GachaView(View):
             mensaje_resultado = f"**+{valor_final:,} créditos**"
             
         elif premio["tipo"] == "multiplicador":
-            # Activar bono temporal
+            # Activar bono por usos
             if user_id not in bonos_activos:
                 bonos_activos[user_id] = {}
             
+            usos = premio.get("usos", 5)  # Por defecto 5 usos
+            
             bonos_activos[user_id]["multiplicador"] = {
                 "valor": premio["valor"],
-                "expiracion": time.time() + premio.get("duracion", 3600),
+                "usos_restantes": usos,
+                "usos_totales": usos,
                 "nombre": premio["nombre"]
             }
             
-            duracion_horas = premio.get("duracion", 3600) // 3600
-            mensaje_resultado = f"**{premio['nombre']}** por {duracion_horas}h"
+            mensaje_resultado = f"**{premio['nombre']}** con {usos} usos"
             
             # Mensaje especial para multiplicadores altos
             if premio["valor"] >= 2.5:
@@ -186,7 +188,7 @@ class GachaView(View):
         if premio["tipo"] == "multiplicador":
             embed_resultado.add_field(
                 name="💡 ¿Cómo funciona?", 
-                value="Este multiplicador se aplicará automáticamente a tus próximas ganancias",
+                value=f"Este multiplicador se aplicará a tus próximas {premio.get('usos', 5)} ganancias",
                 inline=False
             )
         
@@ -232,9 +234,9 @@ class Gacha(commands.Cog):
             rarezas_text += f"{info['color']} **{rareza.upper()}** (x{info['multiplicador']})\n"
         
         embed.add_field(name="🎨 SISTEMA DE RAREZAS", value=rarezas_text, inline=False)
-        embed.add_field(name="🎯 Tipos de Premios", value="💰 Créditos directos\n✨ Multiplicadores (1.25x - 3.0x)", inline=True)
+        embed.add_field(name="🎯 Tipos de Premios", value="💰 Créditos directos\n✨ Multiplicadores (por usos)", inline=True)
         
-        embed.set_footer(text="¡Los multiplicadores se aplican automáticamente a tus ganancias!")
+        embed.set_footer(text="¡Los multiplicadores ahora tienen usos limitados en lugar de tiempo!")
         
         view = GachaView(ctx.author.id)
         await ctx.send(embed=embed, view=view)
@@ -286,8 +288,8 @@ class Gacha(commands.Cog):
         """Muestra tus bonos activos del Gacha"""
         user_id = ctx.author.id
         
-        # Limpiar bonos expirados primero
-        self.limpiar_bonos_expirados(user_id)
+        # Limpiar bonos sin usos primero
+        self.limpiar_bonos_sin_usos(user_id)
         
         if user_id not in bonos_activos or not bonos_activos[user_id]:
             await ctx.send("❌ No tienes bonos activos en este momento.")
@@ -300,24 +302,20 @@ class Gacha(commands.Cog):
         
         for bono_tipo, bono_info in bonos_activos[user_id].items():
             if bono_tipo == "multiplicador":
-                tiempo_restante = bono_info["expiracion"] - time.time()
-                if tiempo_restante > 0:
-                    horas = int(tiempo_restante // 3600)
-                    minutos = int((tiempo_restante % 3600) // 60)
-                    embed.add_field(
-                        name="✨ Multiplicador Activo", 
-                        value=f"**{bono_info['nombre']}**\nTiempo restante: {horas}h {minutos}m", 
-                        inline=True
-                    )
+                embed.add_field(
+                    name="✨ Multiplicador Activo", 
+                    value=f"**{bono_info['nombre']}**\nUsos restantes: {bono_info['usos_restantes']}/{bono_info['usos_totales']}", 
+                    inline=True
+                )
         
         await ctx.send(embed=embed)
 
-    def limpiar_bonos_expirados(self, user_id: int):
-        """Elimina los bonos que han expirado"""
+    def limpiar_bonos_sin_usos(self, user_id: int):
+        """Elimina los bonos que se han agotado"""
         if user_id in bonos_activos:
             bonos_a_eliminar = []
             for bono_tipo, bono_info in bonos_activos[user_id].items():
-                if "expiracion" in bono_info and time.time() > bono_info["expiracion"]:
+                if "usos_restantes" in bono_info and bono_info["usos_restantes"] <= 0:
                     bonos_a_eliminar.append(bono_tipo)
             
             for bono in bonos_a_eliminar:
@@ -328,7 +326,7 @@ class Gacha(commands.Cog):
 
     def obtener_multiplicador_activo(self, user_id: int) -> float:
         """Obtiene el multiplicador activo para un usuario"""
-        self.limpiar_bonos_expirados(user_id)
+        self.limpiar_bonos_sin_usos(user_id)
         
         if user_id in bonos_activos and "multiplicador" in bonos_activos[user_id]:
             return bonos_activos[user_id]["multiplicador"]["valor"]
@@ -339,9 +337,17 @@ class Gacha(commands.Cog):
         multiplicador = self.obtener_multiplicador_activo(user_id)
         ganancia_final = int(ganancia_base * multiplicador)
         
-        # Si hay multiplicador activo, mostrar mensaje
-        if multiplicador > 1.0:
-            print(f"[GACHA] Multiplicador aplicado: {ganancia_base} -> {ganancia_final} (x{multiplicador})")
+        # Si hay multiplicador activo, reducir usos
+        if multiplicador > 1.0 and user_id in bonos_activos and "multiplicador" in bonos_activos[user_id]:
+            bonos_activos[user_id]["multiplicador"]["usos_restantes"] -= 1
+            usos_restantes = bonos_activos[user_id]["multiplicador"]["usos_restantes"]
+            
+            print(f"[GACHA] Multiplicador aplicado: {ganancia_base} -> {ganancia_final} (x{multiplicador}) | Usos restantes: {usos_restantes}")
+            
+            # Limpiar si se agotaron los usos
+            if usos_restantes <= 0:
+                self.limpiar_bonos_sin_usos(user_id)
+                print(f"[GACHA] Multiplicador agotado para usuario {user_id}")
         
         return ganancia_final
 
@@ -373,8 +379,9 @@ class Gacha(commands.Cog):
                 rarezas_text += f"**{rareza.upper()}**: {cantidad}\n"
             embed.add_field(name="🎨 Distribución de Rarezas", value=rarezas_text, inline=True)
         
-        embed.add_field(name="💎 Mejor premio posible", value="**MULTIPLICADOR x3.0** (10%)", inline=True)
+        embed.add_field(name="💎 Mejor premio posible", value="**MULTIPLICADOR x3.0** (10 usos, 10%)", inline=True)
         embed.add_field(name="⏰ Cooldowns", value="Básica: 1h\nPremium: 3h\nLegendaria: 24h", inline=True)
+        embed.add_field(name="🔄 Sistema de usos", value="Los multiplicadores ahora tienen usos limitados en lugar de tiempo", inline=False)
         
         await ctx.send(embed=embed)
 

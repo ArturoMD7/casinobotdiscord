@@ -67,7 +67,7 @@ class BlackjackView(View):
         state = game.get_game_state()
         
         if finished:
-            # APLICAR MULTIPLICADOR DEL GACHA SI GANA
+            # APLICAR MULTIPLICADOR DEL GACHA SI GANA (SISTEMA POR USOS)
             if game.payout > 0:
                 gacha_cog = interaction.client.get_cog('Gacha')
                 if gacha_cog:
@@ -77,6 +77,11 @@ class BlackjackView(View):
                         ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(self.user_id, ganancia_base)
                         game.payout = ganancia_final
                         game.result_info = f"{game.result} (x{multiplicador_gacha})"
+                        
+                        # Mostrar usos restantes
+                        if self.user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[self.user_id]:
+                            usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
+                            game.usos_restantes = usos_restantes
             
             db.update_credits(self.user_id, game.payout, "loss" if game.payout < 0 else "win", "blackjack", f"Blackjack: {result}")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
@@ -102,7 +107,7 @@ class BlackjackView(View):
         result = game.player_stand()
         state = game.get_game_state()
         
-        # APLICAR MULTIPLICADOR DEL GACHA SI GANA
+        # APLICAR MULTIPLICADOR DEL GACHA SI GANA (SISTEMA POR USOS)
         if game.payout > 0:
             gacha_cog = interaction.client.get_cog('Gacha')
             if gacha_cog:
@@ -112,6 +117,11 @@ class BlackjackView(View):
                     ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(self.user_id, ganancia_base)
                     game.payout = ganancia_final
                     game.result_info = f"{game.result} (x{multiplicador_gacha})"
+                    
+                    # Mostrar usos restantes
+                    if self.user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[self.user_id]:
+                        usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
+                        game.usos_restantes = usos_restantes
         
         db.update_credits(self.user_id, game.payout, "win" if game.payout > 0 else "loss" if game.payout < 0 else "draw", "blackjack", f"Blackjack: {result}")
         db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
@@ -165,7 +175,7 @@ class BlackjackView(View):
             result = game.player_stand()
             state = game.get_game_state()
             
-            # APLICAR MULTIPLICADOR DEL GACHA SI GANA
+            # APLICAR MULTIPLICADOR DEL GACHA SI GANA (SISTEMA POR USOS)
             if game.payout > 0:
                 gacha_cog = interaction.client.get_cog('Gacha')
                 if gacha_cog:
@@ -175,6 +185,11 @@ class BlackjackView(View):
                         ganancia_final = gacha_cog.aplicar_multiplicador_ganancias(self.user_id, ganancia_base)
                         game.payout = ganancia_final
                         game.result_info = f"{game.result} (x{multiplicador_gacha})"
+                        
+                        # Mostrar usos restantes
+                        if self.user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[self.user_id]:
+                            usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
+                            game.usos_restantes = usos_restantes
             
             db.update_credits(self.user_id, game.payout, "win" if game.payout > 0 else "loss", "blackjack", f"Blackjack: double {result}")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
@@ -262,9 +277,14 @@ class BlackjackView(View):
         if gacha_cog:
             multiplicador = gacha_cog.obtener_multiplicador_activo(self.user_id)
             if multiplicador > 1.0:
+                # Obtener usos restantes
+                usos_restantes = 0
+                if self.user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[self.user_id]:
+                    usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
+                
                 embed.add_field(
                     name="✨ Multiplicador Activo",
-                    value=f"**x{multiplicador}** - Se aplicará si ganas",
+                    value=f"**x{multiplicador}** - Se aplicará si ganas | Usos restantes: **{usos_restantes}**",
                     inline=True
                 )
         
@@ -288,10 +308,14 @@ class BlackjackView(View):
     def get_result_text(self, game):
         if hasattr(game, 'result_info') and 'x' in game.result_info:
             # Resultado con multiplicador aplicado
+            usos_text = ""
+            if hasattr(game, 'usos_restantes'):
+                usos_text = f" | Usos restantes: {game.usos_restantes}"
+                
             if game.result == "blackjack":
-                return f"🎉 **BLACKJACK!** Ganas {game.payout:,} créditos (3:2 + multiplicador)"
+                return f"🎉 **BLACKJACK!** Ganas {game.payout:,} créditos (3:2 + multiplicador){usos_text}"
             elif game.result == "win":
-                return f"🎉 **Ganaste!** Ganas {game.payout:,} créditos (con multiplicador)"
+                return f"🎉 **Ganaste!** Ganas {game.payout:,} créditos (con multiplicador){usos_text}"
             elif game.result == "loss":
                 return f"❌ **Perdiste** {abs(game.payout):,} créditos"
             else:
@@ -362,9 +386,6 @@ class Blackjack(commands.Cog):
         game_key = f"{user_id}_{message.id}"
         games[game_key] = game
 
-    # Los comandos de texto alternativos (pedir, plantarse, doblar, rendirse) 
-    # se mantienen igual pero con la misma lógica de multiplicadores aplicada
-
     @commands.command(name="blackjackstats", aliases=["bjstats"])
     async def blackjackstats(self, ctx):
         """Muestra estadísticas de blackjack activas"""
@@ -387,7 +408,12 @@ class Blackjack(commands.Cog):
         if gacha_cog:
             multiplicador = gacha_cog.obtener_multiplicador_activo(user_id)
             if multiplicador > 1.0:
-                multiplicador_info = f" | 🎰 Multiplicador activo: **x{multiplicador}**"
+                # Obtener usos restantes
+                usos_restantes = 0
+                if user_id in gacha_cog.bonos_activos and "multiplicador" in gacha_cog.bonos_activos[user_id]:
+                    usos_restantes = gacha_cog.bonos_activos[user_id]["multiplicador"]["usos_restantes"]
+                
+                multiplicador_info = f" | 🎰 Multiplicador activo: **x{multiplicador}** (usos restantes: {usos_restantes})"
         
         for i, game_key in enumerate(user_active_games, 1):
             game = games[game_key]
