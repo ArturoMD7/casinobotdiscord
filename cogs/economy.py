@@ -208,8 +208,14 @@ class Economy(commands.Cog):
         
         # 50% de probabilidad de éxito
         success = random.random() < 0.5
-        max_rob = min(target_credits // 4, 1000)  # Robar hasta 25% o 1000 créditos
-        amount = random.randint(100, max_rob)
+        
+        # Calcular porcentaje aleatorio entre 1% y 25%
+        porcentaje_robo = random.uniform(0.01, 0.25)  # 1% a 25%
+        amount = int(target_credits * porcentaje_robo)
+        
+        # Asegurar que el robo mínimo sea de 1 crédito
+        amount = max(1, amount)
+        
         amount_final = int(amount * multiplicador) if success and multiplicador > 1.0 else amount
         
         if success:
@@ -219,7 +225,7 @@ class Economy(commands.Cog):
             
             embed = discord.Embed(
                 title="🎭 Robo Exitoso!",
-                description=f"¡Le robaste {amount:,} créditos a {member.mention}!",
+                description=f"¡Le robaste {amount:,} créditos ({porcentaje_robo:.1%}) a {member.mention}!",
                 color=discord.Color.green()
             )
             
@@ -231,7 +237,7 @@ class Economy(commands.Cog):
                 )
                 
         else:
-            # Robo fallido - multa
+            # Robo fallido - multa (50% de lo que intentó robar)
             fine = amount // 2
             db.update_credits(ctx.author.id, -fine, "loss", "rob", f"Intento fallido contra {member.display_name}")
             

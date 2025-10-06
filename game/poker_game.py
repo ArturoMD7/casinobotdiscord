@@ -43,13 +43,15 @@ class PokerGame:
         if user_id in self.players:
             return False
         
+        # Verificar créditos mínimos
         credits = db.get_credits(user_id)
         if credits < self.min_bet * 10:
             return False
             
         self.players[user_id] = {
             "name": user_name,
-            "chips": credits,
+            "chips": 1000,  # Fichas iniciales para el juego
+            "credits": credits,
             "hand": [],
             "folded": False,
             "all_in": False,
@@ -70,7 +72,7 @@ class PokerGame:
         self.pot = 0
         self.current_bet = self.big_blind
         
-        # Repartir cartas
+        # Resetear estado de todos los jugadores
         for player_id in self.players:
             self.players[player_id]["hand"] = [self.deck.pop(), self.deck.pop()]
             self.players[player_id]["folded"] = False
@@ -80,29 +82,31 @@ class PokerGame:
         
         # Aplicar blinds
         player_ids = list(self.players.keys())
-        small_blind_player = player_ids[self.dealer_position]
-        big_blind_player = player_ids[(self.dealer_position + 1) % len(player_ids)]
         
+        # Small blind
+        small_blind_player = player_ids[self.dealer_position]
         self.hacer_apuesta(small_blind_player, self.small_blind)
+        
+        # Big blind
+        big_blind_player = player_ids[(self.dealer_position + 1) % len(player_ids)]
         self.hacer_apuesta(big_blind_player, self.big_blind)
         
+        # El primer jugador después del big blind inicia
         self.current_player_index = (self.dealer_position + 2) % len(player_ids)
         return True
     
     def hacer_apuesta(self, player_id: int, cantidad: int) -> bool:
-        """Realiza una apuesta usando créditos reales"""
+        """Realiza una apuesta usando fichas del juego"""
         if player_id not in self.players:
             return False
             
         player = self.players[player_id]
         
         if cantidad > player["chips"]:
-            return False
+            # Si no tiene suficientes fichas, va all-in
+            cantidad = player["chips"]
+            player["all_in"] = True
         
-        success = db.update_credits(player_id, -cantidad, "bet", "poker", f"Apuesta poker: {cantidad}")
-        if not success:
-            return False
-            
         player["chips"] -= cantidad
         player["bet"] += cantidad
         player["total_bet"] += cantidad
@@ -113,21 +117,20 @@ class PokerGame:
             
         return True
     
-    def entregar_premio(self, player_id: int, cantidad: int):
-        """Entrega el premio al ganador"""
-        if player_id not in self.players:
-            return False
-            
-        success = db.update_credits(player_id, cantidad, "win", "poker", f"Ganador poker: {cantidad}")
-        if success:
-            self.players[player_id]["chips"] += cantidad
-        return success
-    
     def determinar_ganador(self) -> List[Tuple[int, int]]:
         """Determina el ganador o ganadores de la mano"""
         jugadores_activos = [pid for pid, p in self.players.items() if not p["folded"]]
         
         if not jugadores_activos:
+            return []
+        
+        # Si solo queda un jugador activo, gana automáticamente
+        if len(jugadores_activos) == 1:
+            ganador_id = jugadores_activos[0]
+            premio_en_creditos = self.pot
+            success = db.update_credits(ganador_id, premio_en_creditos, "win", "poker", f"Ganador poker: {premio_en_creditos}")
+            if success:
+                return [(ganador_id, premio_en_creditos)]
             return []
         
         # Evaluar manos de todos los jugadores activos
@@ -137,45 +140,30 @@ class PokerGame:
             evaluacion = self.evaluator.evaluar_mano(mano, self.community_cards)
             manos_evaluadas.append((player_id, evaluacion))
         
-        # Encontrar la mejor mano
-        mejor_mano = max(manos_evaluadas, key=lambda x: (x[1][0], x[1][1]))
-        mejor_ranking = mejor_mano[1][0]
-        mejores_valores = mejor_mano[1][1]
+        # Ordenar manos por ranking (mejor primero)
+        manos_ordenadas = sorted(manos_evaluadas, key=lambda x: (x[1][0], x[1][1]), reverse=True)
         
-        # Encontrar todos los jugadores con la mejor mano
+        # Encontrar ganadores (puede haber empate)
+        mejor_ranking = manos_ordenadas[0][1][0]
+        mejor_valor = manos_ordenadas[0][1][1]
+        
         ganadores = []
-        for player_id, (ranking, valores, nombre) in manos_evaluadas:
-            if ranking == mejor_ranking:
-                # Verificar si los valores de desempate son iguales
-                if valores == mejores_valores:
-                    ganadores.append(player_id)
+        for player_id, (ranking, valores, _) in manos_ordenadas:
+            if ranking == mejor_ranking and valores == mejor_valor:
+                ganadores.append(player_id)
         
-        # Repartir el pozo entre los ganadores
-        premio_por_ganador = self.pot // len(ganadores)
+        # Distribuir el pozo entre ganadores
         resultados = []
+        premio_por_ganador = self.pot // len(ganadores)
         
         for ganador_id in ganadores:
-            # Aplicar multiplicador del Gacha
-            premio_final = premio_por_ganador
-            gacha_cog = self._get_gacha_cog()
-            
-            if gacha_cog and premio_por_ganador > 0:
-                multiplicador = gacha_cog.obtener_multiplicador_activo(ganador_id)
-                if multiplicador > 1.0:
-                    premio_final = gacha_cog.aplicar_multiplicador_ganancias(ganador_id, premio_por_ganador)
-            
-            # Entregar premio
-            success = self.entregar_premio(ganador_id, premio_final)
+            premio_en_creditos = premio_por_ganador
+            success = db.update_credits(ganador_id, premio_en_creditos, "win", "poker", f"Ganador poker: {premio_en_creditos}")
             if success:
-                resultados.append((ganador_id, premio_final))
+                resultados.append((ganador_id, premio_en_creditos))
         
         self.pot = 0
         return resultados
-    
-    def _get_gacha_cog(self):
-        """Obtiene el cog de Gacha si está disponible"""
-        # Esto se implementará en el cog principal
-        return None
     
     def obtener_info_manos(self) -> List[Tuple[str, str, List[str]]]:
         """Retorna información de las manos para mostrar al final"""
@@ -188,91 +176,154 @@ class PokerGame:
                 info.append((player["name"], nombre_mano, mano))
         return info
     
-    # Los demás métodos permanecen igual...
     def fold(self, player_id: int) -> bool:
+        """Jugador se retira de la mano"""
         if player_id not in self.players:
             return False
         self.players[player_id]["folded"] = True
         return True
     
-    def check(self, player_id: int) -> bool:
-        if player_id not in self.players:
-            return False
-        player = self.players[player_id]
-        return player["bet"] >= self.current_bet
-    
     def call(self, player_id: int) -> bool:
+        """Jugador iguala la apuesta actual"""
         if player_id not in self.players:
             return False
+        
         player = self.players[player_id]
         cantidad_a_igualar = self.current_bet - player["bet"]
+        
         if cantidad_a_igualar <= 0:
-            return self.check(player_id)
+            return True  # Check
+        
+        if cantidad_a_igualar > player["chips"]:
+            # All-in
+            cantidad_a_igualar = player["chips"]
+            player["all_in"] = True
+        
         return self.hacer_apuesta(player_id, cantidad_a_igualar)
     
     def raise_bet(self, player_id: int, cantidad: int) -> bool:
+        """Jugador sube la apuesta"""
         if player_id not in self.players:
             return False
-        cantidad_total = self.current_bet - self.players[player_id]["bet"] + cantidad
-        if cantidad_total < self.min_bet:
+        
+        player = self.players[player_id]
+        cantidad_total = self.current_bet - player["bet"] + cantidad
+        
+        # Verificar que la subida sea válida
+        if cantidad < self.min_bet:
             return False
+        
+        if cantidad_total > player["chips"]:
+            # All-in
+            cantidad_total = player["chips"]
+            player["all_in"] = True
+        
         return self.hacer_apuesta(player_id, cantidad_total)
     
     def siguiente_fase(self):
+        """Avanza a la siguiente fase del juego"""
         if self.game_phase == "preflop":
             self.game_phase = "flop"
             for _ in range(3):
-                self.community_cards.append(self.deck.pop())
+                if self.deck:
+                    self.community_cards.append(self.deck.pop())
         elif self.game_phase == "flop":
             self.game_phase = "turn"
-            self.community_cards.append(self.deck.pop())
+            if self.deck:
+                self.community_cards.append(self.deck.pop())
         elif self.game_phase == "turn":
             self.game_phase = "river"
-            self.community_cards.append(self.deck.pop())
+            if self.deck:
+                self.community_cards.append(self.deck.pop())
         elif self.game_phase == "river":
             self.game_phase = "showdown"
             return self.determinar_ganador()
         
+        # Resetear apuestas para nueva ronda
         for player_id in self.players:
             self.players[player_id]["bet"] = 0
         self.current_bet = 0
+        
+        # Empezar desde el dealer
+        self.current_player_index = self.dealer_position
         return None
     
     def siguiente_turno(self):
+        """Avanza al siguiente turno"""
+        # Verificar si el juego debe terminar
         jugadores_activos = [pid for pid, p in self.players.items() if not p["folded"] and not p["all_in"]]
-        if not jugadores_activos:
-            return False
-        self.current_player_index = (self.current_player_index + 1) % len(self.players)
-        current_player_id = list(self.players.keys())[self.current_player_index]
-        if current_player_id == list(self.players.keys())[self.dealer_position]:
-            ganador = self.siguiente_fase()
-            if ganador:
-                return ganador
+        
+        if len(jugadores_activos) <= 1:
+            # Solo queda un jugador activo o todos all-in, terminar juego
+            return self.determinar_ganador()
+        
+        # Encontrar siguiente jugador activo
+        jugadores_orden = list(self.players.keys())
+        intentos = 0
+        jugador_encontrado = False
+        
+        while intentos < len(self.players) and not jugador_encontrado:
+            self.current_player_index = (self.current_player_index + 1) % len(self.players)
+            current_player_id = jugadores_orden[self.current_player_index]
+            
+            player = self.players[current_player_id]
+            if not player["folded"] and not player["all_in"]:
+                jugador_encontrado = True
+            intentos += 1
+        
+        if not jugador_encontrado:
+            # No hay más jugadores activos, avanzar fase
+            resultado_fase = self.siguiente_fase()
+            if resultado_fase:
+                return resultado_fase
+            else:
+                # Continuar con el siguiente turno después de cambiar fase
+                return self.siguiente_turno()
+        
+        # Verificar si hemos completado una ronda (volvemos al primer jugador después del dealer)
+        if self.current_player_index == self.dealer_position:
+            resultado_fase = self.siguiente_fase()
+            if resultado_fase:
+                return resultado_fase
+        
         return True
     
     def obtener_estado_juego(self) -> dict:
+        """Obtiene el estado actual del juego para mostrar"""
+        current_player_id = None
+        if self.players and 0 <= self.current_player_index < len(self.players):
+            current_player_id = list(self.players.keys())[self.current_player_index]
+        
+        estado_players = {}
+        for pid, player in self.players.items():
+            estado_players[pid] = {
+                "name": player["name"],
+                "chips": player["chips"],
+                "hand": player["hand"],
+                "folded": player["folded"],
+                "all_in": player["all_in"],
+                "bet": player["bet"],
+                "is_turn": pid == current_player_id
+            }
+        
         return {
             "game_id": self.game_id,
             "phase": self.game_phase,
             "pot": self.pot,
             "current_bet": self.current_bet,
             "community_cards": self.community_cards,
-            "players": {
-                pid: {
-                    "name": p["name"],
-                    "chips": p["chips"],
-                    "hand": p["hand"] if self.game_phase == "showdown" else ["??", "??"],
-                    "folded": p["folded"],
-                    "all_in": p["all_in"],
-                    "bet": p["bet"],
-                    "is_turn": pid == list(self.players.keys())[self.current_player_index]
-                }
-                for pid, p in self.players.items()
-            },
-            "current_player": list(self.players.keys())[self.current_player_index] if self.players else None
+            "players": estado_players,
+            "current_player": current_player_id
         }
     
+    def obtener_mano_jugador(self, player_id: int) -> List[str]:
+        """Obtiene la mano de un jugador específico"""
+        if player_id in self.players:
+            return self.players[player_id]["hand"]
+        return []
+    
     def puede_unirse(self, user_id: int) -> bool:
+        """Verifica si un usuario puede unirse al juego"""
         if user_id in self.players:
             return False
         credits = db.get_credits(user_id)
