@@ -5,7 +5,6 @@ from db.database import Database
 import random
 import asyncio
 import time
-import math
 
 db = Database()
 
@@ -57,15 +56,12 @@ SISTEMA_GACHA = {
     }
 }
 
-# Diccionarios para guardar estados temporales
-bonos_activos = {}
-cooldowns_gacha = {}
-colecciones_usuarios = {}
 
 class GachaView(View):
-    def __init__(self, user_id):
+    def __init__(self, user_id, gacha_cog):
         super().__init__(timeout=60.0)
         self.user_id = user_id
+        self.gacha_cog = gacha_cog
 
     @discord.ui.button(label="📦 Caja Básica (100cr)", style=discord.ButtonStyle.secondary, emoji="📦")
     async def basica_button(self, interaction: discord.Interaction, button: Button):
@@ -82,11 +78,12 @@ class GachaView(View):
     async def abrir_caja(self, interaction: discord.Interaction, tipo_caja: str):
         caja = SISTEMA_GACHA["cajas"][tipo_caja]
         user_id = interaction.user.id
+        cog = self.gacha_cog
         
         # Verificar cooldown
         cooldown_key = f"{user_id}_{tipo_caja}"
-        if cooldown_key in cooldowns_gacha:
-            tiempo_restante = cooldowns_gacha[cooldown_key] - time.time()
+        if cooldown_key in cog.cooldowns_gacha:
+            tiempo_restante = cog.cooldowns_gacha[cooldown_key] - time.time()
             if tiempo_restante > 0:
                 horas = int(tiempo_restante // 3600)
                 minutos = int((tiempo_restante % 3600) // 60)
@@ -119,10 +116,10 @@ class GachaView(View):
         
         # Obtener premio
         premio = self.obtener_premio(caja["probabilidades"])
-        await self.entregar_premio(interaction, premio, caja, user_id)
+        await self.entregar_premio(interaction, premio, caja, user_id, cog)
         
         # Aplicar cooldown
-        cooldowns_gacha[cooldown_key] = time.time() + caja["cooldown"]
+        cog.cooldowns_gacha[cooldown_key] = time.time() + caja["cooldown"]
 
     def obtener_premio(self, probabilidades):
         rand = random.random()
@@ -131,48 +128,38 @@ class GachaView(View):
             acumulado += premio["prob"]
             if rand <= acumulado:
                 return premio
-        return probabilidades[0]  # Fallback
+        return probabilidades[0]
 
-    async def entregar_premio(self, interaction: discord.Interaction, premio: dict, caja: dict, user_id: int):
+    async def entregar_premio(self, interaction, premio, caja, user_id, cog):
         # Aplicar bono de rareza
         bono_rareza = SISTEMA_GACHA["bonos_rareza"][premio["rareza"]]
         
-        # Procesar premio según tipo
         mensaje_resultado = ""
         if premio["tipo"] == "creditos":
             valor_final = int(premio["valor"] * bono_rareza["multiplicador"])
             db.update_credits(user_id, valor_final, "bonus", "gacha_premio", f"{premio['nombre']} de {caja['nombre']}")
             mensaje_resultado = f"**+{valor_final:,} créditos**"
-            
         elif premio["tipo"] == "multiplicador":
-            # Activar bono por usos
-            if user_id not in bonos_activos:
-                bonos_activos[user_id] = {}
-            
-            usos = premio.get("usos", 5)  # Por defecto 5 usos
-            
-            bonos_activos[user_id]["multiplicador"] = {
+            if user_id not in cog.bonos_activos:
+                cog.bonos_activos[user_id] = {}
+            usos = premio.get("usos", 5)
+            cog.bonos_activos[user_id]["multiplicador"] = {
                 "valor": premio["valor"],
                 "usos_restantes": usos,
                 "usos_totales": usos,
                 "nombre": premio["nombre"]
             }
-            
             mensaje_resultado = f"**{premio['nombre']}** con {usos} usos"
-            
-            # Mensaje especial para multiplicadores altos
             if premio["valor"] >= 2.5:
                 mensaje_resultado += " 🎊 **¡BONO ÉPICO!** 🎊"
         
         # Registrar en colección
-        if user_id not in colecciones_usuarios:
-            colecciones_usuarios[user_id] = []
-        
+        if user_id not in cog.colecciones_usuarios:
+            cog.colecciones_usuarios[user_id] = []
         item_id = f"{premio['nombre']}_{premio['rareza']}"
-        if item_id not in colecciones_usuarios[user_id]:
-            colecciones_usuarios[user_id].append(item_id)
+        if item_id not in cog.colecciones_usuarios[user_id]:
+            cog.colecciones_usuarios[user_id].append(item_id)
         
-        # Crear embed de resultado
         embed_resultado = discord.Embed(
             title=f"{premio['emoji']} **{premio['nombre']}** {premio['emoji']}",
             description=f"¡Has obtenido: {mensaje_resultado}!",
@@ -184,7 +171,6 @@ class GachaView(View):
         embed_resultado.add_field(name="📦 Caja", value=caja["nombre"], inline=True)
         embed_resultado.add_field(name="🎰 Probabilidad", value=f"{premio['prob']*100:.1f}%", inline=True)
         
-        # Mostrar información adicional para multiplicadores
         if premio["tipo"] == "multiplicador":
             embed_resultado.add_field(
                 name="💡 ¿Cómo funciona?", 
@@ -197,9 +183,13 @@ class GachaView(View):
         
         await interaction.edit_original_response(embed=embed_resultado)
 
+
 class Gacha(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.bonos_activos = {}
+        self.cooldowns_gacha = {}
+        self.colecciones_usuarios = {}
 
     @commands.command(name="gacha", aliases=["cajas", "misterio"])
     async def gacha(self, ctx):
@@ -210,13 +200,11 @@ class Gacha(commands.Cog):
             color=0xff00ff
         )
         
-        # Información de cajas
         for caja_id, caja in SISTEMA_GACHA["cajas"].items():
-            # Calcular cooldown restante
             cooldown_key = f"{ctx.author.id}_{caja_id}"
             cooldown_info = ""
-            if cooldown_key in cooldowns_gacha:
-                tiempo_restante = cooldowns_gacha[cooldown_key] - time.time()
+            if cooldown_key in self.cooldowns_gacha:
+                tiempo_restante = self.cooldowns_gacha[cooldown_key] - time.time()
                 if tiempo_restante > 0:
                     horas = int(tiempo_restante // 3600)
                     minutos = int((tiempo_restante % 3600) // 60)
@@ -228,17 +216,14 @@ class Gacha(commands.Cog):
                 inline=False
             )
         
-        # Información de rarezas
         rarezas_text = ""
         for rareza, info in SISTEMA_GACHA["bonos_rareza"].items():
             rarezas_text += f"{info['color']} **{rareza.upper()}** (x{info['multiplicador']})\n"
-        
         embed.add_field(name="🎨 SISTEMA DE RAREZAS", value=rarezas_text, inline=False)
         embed.add_field(name="🎯 Tipos de Premios", value="💰 Créditos directos\n✨ Multiplicadores (por usos)", inline=True)
-        
         embed.set_footer(text="¡Los multiplicadores ahora tienen usos limitados en lugar de tiempo!")
         
-        view = GachaView(ctx.author.id)
+        view = GachaView(ctx.author.id, self)
         await ctx.send(embed=embed, view=view)
 
     def obtener_mejores_premios(self, caja_id: str) -> str:
@@ -246,144 +231,94 @@ class Gacha(commands.Cog):
         premios_epicos = [p for p in caja["probabilidades"] if p["rareza"] in ["epico", "legendario", "mitico"]]
         return ", ".join([p["nombre"] for p in premios_epicos[:2]])
 
+    def limpiar_bonos_sin_usos(self, user_id: int):
+        if user_id in self.bonos_activos:
+            bonos_a_eliminar = [bt for bt, bi in self.bonos_activos[user_id].items() if bi.get("usos_restantes", 1) <= 0]
+            for bono in bonos_a_eliminar:
+                del self.bonos_activos[user_id][bono]
+            if not self.bonos_activos[user_id]:
+                del self.bonos_activos[user_id]
+
+    def obtener_multiplicador_activo(self, user_id: int) -> float:
+        self.limpiar_bonos_sin_usos(user_id)
+        if user_id in self.bonos_activos and "multiplicador" in self.bonos_activos[user_id]:
+            return self.bonos_activos[user_id]["multiplicador"]["valor"]
+        return 1.0
+
+    def aplicar_multiplicador_ganancias(self, user_id: int, ganancia_base: int) -> int:
+        multiplicador = self.obtener_multiplicador_activo(user_id)
+        ganancia_final = int(ganancia_base * multiplicador)
+        if multiplicador > 1.0 and user_id in self.bonos_activos and "multiplicador" in self.bonos_activos[user_id]:
+            self.bonos_activos[user_id]["multiplicador"]["usos_restantes"] -= 1
+            if self.bonos_activos[user_id]["multiplicador"]["usos_restantes"] <= 0:
+                self.limpiar_bonos_sin_usos(user_id)
+        return ganancia_final
+
     @commands.command(name="micoleccion", aliases=["mycollection", "coleccion"])
     async def micoleccion(self, ctx):
-        """Muestra tu colección de items del Gacha"""
         user_id = ctx.author.id
-        
-        if user_id not in colecciones_usuarios or not colecciones_usuarios[user_id]:
+        if user_id not in self.colecciones_usuarios or not self.colecciones_usuarios[user_id]:
             await ctx.send("❌ Aún no tienes items en tu colección. ¡Abre algunas cajas!")
             return
-        
-        # Agrupar items por rareza
         items_por_rareza = {}
-        for item_id in colecciones_usuarios[user_id]:
+        for item_id in self.colecciones_usuarios[user_id]:
             rareza = item_id.split("_")[-1]
             if rareza not in items_por_rareza:
                 items_por_rareza[rareza] = []
             items_por_rareza[rareza].append(item_id)
-        
         embed = discord.Embed(
             title=f"📚 Colección de {ctx.author.display_name}",
-            description=f"**{len(colecciones_usuarios[user_id])}** items coleccionados",
+            description=f"**{len(self.colecciones_usuarios[user_id])}** items coleccionados",
             color=0x9933ff
         )
-        
         for rareza, items in items_por_rareza.items():
             color_rareza = SISTEMA_GACHA["bonos_rareza"][rareza]["color"]
             items_text = "\n".join([f"• {item.replace('_' + rareza, '')}" for item in items[:5]])
             if len(items) > 5:
                 items_text += f"\n• ... y {len(items) - 5} más"
-                
-            embed.add_field(
-                name=f"{rareza.upper()} ({len(items)})",
-                value=items_text,
-                inline=True
-            )
-        
+            embed.add_field(name=f"{rareza.upper()} ({len(items)})", value=items_text, inline=True)
         await ctx.send(embed=embed)
 
     @commands.command(name="misbonos", aliases=["mybuffs", "bonos"])
     async def misbonos(self, ctx):
-        """Muestra tus bonos activos del Gacha"""
         user_id = ctx.author.id
-        
-        # Limpiar bonos sin usos primero
         self.limpiar_bonos_sin_usos(user_id)
-        
-        if user_id not in bonos_activos or not bonos_activos[user_id]:
+        if user_id not in self.bonos_activos or not self.bonos_activos[user_id]:
             await ctx.send("❌ No tienes bonos activos en este momento.")
             return
-        
-        embed = discord.Embed(
-            title=f"✨ Bonos Activos de {ctx.author.display_name}",
-            color=0x00ff00
-        )
-        
-        for bono_tipo, bono_info in bonos_activos[user_id].items():
+        embed = discord.Embed(title=f"✨ Bonos Activos de {ctx.author.display_name}", color=0x00ff00)
+        for bono_tipo, bono_info in self.bonos_activos[user_id].items():
             if bono_tipo == "multiplicador":
                 embed.add_field(
-                    name="✨ Multiplicador Activo", 
-                    value=f"**{bono_info['nombre']}**\nUsos restantes: {bono_info['usos_restantes']}/{bono_info['usos_totales']}", 
+                    name="✨ Multiplicador Activo",
+                    value=f"**{bono_info['nombre']}**\nUsos restantes: {bono_info['usos_restantes']}/{bono_info['usos_totales']}",
                     inline=True
                 )
-        
         await ctx.send(embed=embed)
-
-    def limpiar_bonos_sin_usos(self, user_id: int):
-        """Elimina los bonos que se han agotado"""
-        if user_id in bonos_activos:
-            bonos_a_eliminar = []
-            for bono_tipo, bono_info in bonos_activos[user_id].items():
-                if "usos_restantes" in bono_info and bono_info["usos_restantes"] <= 0:
-                    bonos_a_eliminar.append(bono_tipo)
-            
-            for bono in bonos_a_eliminar:
-                del bonos_activos[user_id][bono]
-            
-            if not bonos_activos[user_id]:
-                del bonos_activos[user_id]
-
-    def obtener_multiplicador_activo(self, user_id: int) -> float:
-        """Obtiene el multiplicador activo para un usuario"""
-        self.limpiar_bonos_sin_usos(user_id)
-        
-        if user_id in bonos_activos and "multiplicador" in bonos_activos[user_id]:
-            return bonos_activos[user_id]["multiplicador"]["valor"]
-        return 1.0
-
-    def aplicar_multiplicador_ganancias(self, user_id: int, ganancia_base: int) -> int:
-        """Aplica el multiplicador activo a las ganancias y devuelve la ganancia final"""
-        multiplicador = self.obtener_multiplicador_activo(user_id)
-        ganancia_final = int(ganancia_base * multiplicador)
-        
-        # Si hay multiplicador activo, reducir usos
-        if multiplicador > 1.0 and user_id in bonos_activos and "multiplicador" in bonos_activos[user_id]:
-            bonos_activos[user_id]["multiplicador"]["usos_restantes"] -= 1
-            usos_restantes = bonos_activos[user_id]["multiplicador"]["usos_restantes"]
-            
-            print(f"[GACHA] Multiplicador aplicado: {ganancia_base} -> {ganancia_final} (x{multiplicador}) | Usos restantes: {usos_restantes}")
-            
-            # Limpiar si se agotaron los usos
-            if usos_restantes <= 0:
-                self.limpiar_bonos_sin_usos(user_id)
-                print(f"[GACHA] Multiplicador agotado para usuario {user_id}")
-        
-        return ganancia_final
 
     @commands.command(name="gachastats", aliases=["gachaestadisticas"])
     async def gachastats(self, ctx):
-        """Estadísticas del sistema Gacha"""
-        total_cajas = sum(len(coleccion) for coleccion in colecciones_usuarios.values())
-        total_usuarios = len(colecciones_usuarios)
-        
-        embed = discord.Embed(
-            title="📊 ESTADÍSTICAS DEL SISTEMA GACHA",
-            color=0xff00ff
-        )
-        
+        total_cajas = sum(len(coleccion) for coleccion in self.colecciones_usuarios.values())
+        total_usuarios = len(self.colecciones_usuarios)
+        embed = discord.Embed(title="📊 ESTADÍSTICAS DEL SISTEMA GACHA", color=0xff00ff)
         embed.add_field(name="👥 Usuarios con colección", value=f"**{total_usuarios}**", inline=True)
         embed.add_field(name="📦 Items totales obtenidos", value=f"**{total_cajas}**", inline=True)
         embed.add_field(name="🎰 Cajas disponibles", value=f"**{len(SISTEMA_GACHA['cajas'])}** tipos", inline=True)
-        
-        # Estadísticas de rarezas
         todas_rarezas = {}
-        for usuario_items in colecciones_usuarios.values():
+        for usuario_items in self.colecciones_usuarios.values():
             for item in usuario_items:
                 rareza = item.split("_")[-1]
                 todas_rarezas[rareza] = todas_rarezas.get(rareza, 0) + 1
-        
         if todas_rarezas:
             rarezas_text = ""
             for rareza, cantidad in sorted(todas_rarezas.items(), key=lambda x: x[1], reverse=True):
                 rarezas_text += f"**{rareza.upper()}**: {cantidad}\n"
             embed.add_field(name="🎨 Distribución de Rarezas", value=rarezas_text, inline=True)
-        
         embed.add_field(name="💎 Mejor premio posible", value="**MULTIPLICADOR x3.0** (10 usos, 10%)", inline=True)
         embed.add_field(name="⏰ Cooldowns", value="Básica: 1h\nPremium: 3h\nLegendaria: 24h", inline=True)
         embed.add_field(name="🔄 Sistema de usos", value="Los multiplicadores ahora tienen usos limitados en lugar de tiempo", inline=False)
-        
         await ctx.send(embed=embed)
+
 
 async def setup(bot):
     await bot.add_cog(Gacha(bot))
