@@ -40,7 +40,7 @@ SISTEMA_GACHA = {
             "cooldown": 86400,  # 24 horas
             "probabilidades": [
                 {"tipo": "creditos", "valor": 1000, "prob": 0.30, "emoji": "💰", "nombre": "Fortuna Pequeña", "rareza": "raro"},
-                {"tipo": "multiplicador", "valor": 2.0, "prob": 0.25, "emoji": "✨", "nombre": "Multiplicador x2.0", "rareza": "epico", "usos": 15},
+                {"tipo": "multiplicador", "valor": 2.0, "prob": 0.25, "emoji": "✨", "nombre": "Multiplicador x2.0", "rareza": "epico", "usos": 10},
                 {"tipo": "multiplicador", "valor": 2.5, "prob": 0.20, "emoji": "✨", "nombre": "Multiplicador x2.5", "rareza": "legendario", "usos": 10},
                 {"tipo": "creditos", "valor": 5000, "prob": 0.15, "emoji": "💎", "nombre": "TESORO ÉPICO", "rareza": "legendario"},
                 {"tipo": "multiplicador", "valor": 3.0, "prob": 0.10, "emoji": "🎊", "nombre": "MULTIPLICADOR LEGENDARIO x3.0", "rareza": "mitico", "usos": 10}

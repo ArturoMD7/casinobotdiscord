@@ -196,65 +196,61 @@ class Economy(commands.Cog):
         if member.id == ctx.author.id:
             await ctx.send("❌ No puedes robarte a ti mismo.")
             return
-        
-        # Obtener créditos del ladrón
+
         robber_credits = db.get_credits(ctx.author.id)
         target_credits = db.get_credits(member.id)
-        
-        # Verificar que el ladrón tenga suficientes créditos para la posible multa
-        if robber_credits < 100:
-            await ctx.send("❌ Necesitas al menos 100 créditos para intentar un robo.")
-            return
-        
+
         if target_credits < 100:
             await ctx.send("❌ El usuario objetivo no tiene suficientes créditos.")
             return
-        
-        # Aplicar multiplicador de rango al robo exitoso
+
+        # 50% de probabilidad de éxito
+        success = random.random() < 0.4
+
+        # Determinar monto máximo posible de robo según quién tiene más créditos
+        if robber_credits > target_credits:
+            max_rob_amount = int(target_credits * random.uniform(0.10, 0.25))
+        else:
+            max_rob_amount = int(robber_credits * 0.25)
+
         rango_actual = self.calcular_rango(robber_credits)
         multiplicador = BONOS_RANGO.get(rango_actual, {"multiplicador_ganancias": 1.0})["multiplicador_ganancias"]
-        
-        # 50% de probabilidad de éxito
-        success = random.random() < 0.50
-        
-        # Calcular monto basado en los créditos del ladrón (25% de lo que tiene)
-        max_rob_amount = int(robber_credits * 0.25)  # 25% de los créditos del ladrón
-        
-        # Asegurar que no se intente robar más de lo que tiene la víctima
+
         actual_rob_amount = min(max_rob_amount, target_credits)
-        
         amount_final = int(actual_rob_amount * multiplicador) if success and multiplicador > 1.0 else actual_rob_amount
-        
+
         if success:
-            # Robo exitoso con multiplicador
+            # Robo exitoso
             db.update_credits(ctx.author.id, amount_final, "bonus", "rob", f"Robado a {member.display_name}")
             db.update_credits(member.id, -actual_rob_amount, "loss", "rob", f"Robado por {ctx.author.display_name}")
-            
+
             embed = discord.Embed(
-                title="🎭 Robo Exitoso!",
+                title="🎭 ¡Robo Exitoso!",
                 description=f"¡Le robaste {actual_rob_amount:,} créditos a {member.mention}!",
                 color=discord.Color.green()
             )
-            
+
             if amount_final > actual_rob_amount:
                 embed.add_field(
                     name="🎁 Bono de Rango", 
                     value=f"Recibes: {amount_final:,} créditos (+{int((multiplicador-1)*100)}%)", 
                     inline=True
                 )
-                
+
         else:
-            # Robo fallido - multa del 12.5% de lo que tiene el ladrón
-            fine_amount = int(robber_credits * 0.125)  # 12.5% de multa
+            # Robo fallido
+            fine_amount = int(max_rob_amount)
             db.update_credits(ctx.author.id, -fine_amount, "loss", "rob", f"Intento fallido contra {member.display_name}")
-            
+            db.update_credits(member.id, fine_amount, "bonus", "rob", f"Defendió un robo de {ctx.author.display_name}")
+
             embed = discord.Embed(
-                title="🚨 Robo Fallido!",
-                description=f"¡Te atraparon intentando robar a {member.mention}! Multa: {fine_amount:,} créditos.",
+                title="🚨 ¡Robo Fallido!",
+                description=f"¡Te atraparon intentando robar a {member.mention}! Pagas {fine_amount:,} créditos como multa.",
                 color=discord.Color.red()
             )
-        
+
         await ctx.send(embed=embed)
+
 
     @commands.command(name="rangos", aliases=["ranks", "niveles"])
     async def rangos(self, ctx):
