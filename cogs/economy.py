@@ -4,6 +4,7 @@ from db.database import Database
 from config import STARTING_CREDITS, RANGOS, BONOS_RANGO
 import time
 import random
+import asyncio
 
 db = Database()
 
@@ -278,6 +279,85 @@ class Economy(commands.Cog):
         embed.set_footer(text="Tu rango se actualiza automáticamente al ganar créditos")
         await ctx.send(embed=embed)
 
+    @commands.command(name="restart")
+    async def restart_credits(self, ctx):
+        """Restablece los créditos de todos los usuarios a 10,000 (Solo Admin)"""
+        
+        # Tu user_id
+        MY_USER_ID = 708415651743793162
+        
+        # Verificar si el comando lo ejecutas tú
+        if ctx.author.id != MY_USER_ID:
+            await ctx.send("❌ No tienes permisos para usar este comando.")
+            return
+
+        # Confirmación antes de proceder
+        embed = discord.Embed(
+            title="⚠️ RESTABLECER CRÉDITOS",
+            description="¿Estás seguro de que quieres restablecer **TODOS** los créditos a 10,000?",
+            color=discord.Color.red()
+        )
+        embed.add_field(
+            name="⚠️ ADVERTENCIA",
+            value="Esta acción afectará a **todos los usuarios** y no se puede deshacer.",
+            inline=False
+        )
+        embed.set_footer(text="Responde con 'confirmar' en 30 segundos para proceder")
+        
+        await ctx.send(embed=embed)
+        
+        # Esperar confirmación
+        def check(m):
+            return m.author.id == MY_USER_ID and m.channel == ctx.channel and m.content.lower() == 'confirmar'
+        
+        try:
+            await self.bot.wait_for('message', timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            await ctx.send("❌ Tiempo de confirmación agotado. Operación cancelada.")
+            return
+
+        # Proceder con el restablecimiento
+        loading_msg = await ctx.send("🔄 Restableciendo créditos de todos los usuarios...")
+        
+        try:
+            # Obtener todos los usuarios de la base de datos
+            all_users = db.get_all_users()
+            total_users = len(all_users)
+            updated_count = 0
+            
+            # Actualizar cada usuario individualmente
+            for user_id in all_users:
+                # Obtener créditos actuales para calcular la diferencia
+                current_credits = db.get_credits(user_id)
+                difference = 10000 - current_credits
+                
+                # Actualizar créditos a 10,000
+                if difference != 0:
+                    db.update_credits(user_id, difference, "admin", "restart", "Restablecimiento global de créditos")
+                    updated_count += 1
+            
+            embed = discord.Embed(
+                title="✅ CRÉDITOS RESTABLECIDOS",
+                description=f"Se han actualizado **{updated_count}** usuarios a **10,000 créditos**",
+                color=discord.Color.green()
+            )
+            embed.add_field(
+                name="📊 Resumen",
+                value=f"**Usarios totales:** {total_users}\n**Usarios actualizados:** {updated_count}",
+                inline=True
+            )
+            embed.add_field(
+                name="💰 Nuevo Balance",
+                value="Todos los usuarios ahora tienen **10,000 créditos**",
+                inline=True
+            )
+            embed.set_footer(text="Restablecimiento completado exitosamente")
+            
+            await loading_msg.edit(embed=embed)
+                
+        except Exception as e:
+            await loading_msg.edit(content=f"❌ Error al restablecer los créditos: {str(e)}")
+
     @rob.error
     async def rob_error(self, ctx, error):
         if isinstance(error, commands.CommandOnCooldown):
@@ -292,4 +372,3 @@ class Economy(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))
-    

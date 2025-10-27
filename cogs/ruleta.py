@@ -139,8 +139,7 @@ class Ruleta(commands.Cog):
             else:
                 try:
                     cuadro_num = int(apuesta)
-                    # Los cuadros son grupos de 4 números: 1-4, 5-8, ..., 29-32
-                    # El 33 es especial (33-36)
+                    
                     if cuadro_num <= 8:
                         gano = (cuadro_num - 1) * 4 + 1 <= numero_ganador <= cuadro_num * 4
                         descripcion_apuesta = f"Cuadro: {apuesta} ({(cuadro_num-1)*4+1}-{cuadro_num*4})"
@@ -183,17 +182,18 @@ class Ruleta(commands.Cog):
                 ganancia_final = ganancia_base
                 usos_restantes = 0
                 
-            resultado_texto = f"🎉 **GANASTE** {ganancia_base:,} créditos!"
+            resultado_texto = f"🎉 **GANASTE** {ganancia_final:,} créditos!"
             
             # Añadir información del multiplicador si aplica
             if multiplicador_gacha > 1.0:
                 resultado_texto += f"\n✨ **BONO GACHA:** {ganancia_base:,} → **{ganancia_final:,}** créditos (x{multiplicador_gacha})"
                 if usos_restantes > 0:
                     resultado_texto += f" | Usos restantes: {usos_restantes}"
-                ganancia_neto = ganancia_final
-            else:
-                ganancia_neto = ganancia_base
-                
+            
+            # CORRECCIÓN: La ganancia neta es la ganancia final MENOS la apuesta inicial
+            # porque ya se descontó la apuesta al principio
+            ganancia_neto = ganancia_final - bet  # ¡ESTA ES LA LÍNEA CLAVE!
+        
         else:
             ganancia_neto = -bet
             ganancia_final = 0

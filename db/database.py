@@ -141,3 +141,13 @@ class Database:
             logger.error(f"❌ Error guardando partida de blackjack: {e}")
             # No hacer rollback para no afectar la actualización de créditos
             raise
+
+    def get_all_users(self) -> list:
+        """Obtiene una lista de todos los user_ids en la base de datos"""
+        try:
+            self.cursor.execute("SELECT user_id FROM users")
+            users = [row[0] for row in self.cursor.fetchall()]
+            return users
+        except Exception as e:
+            print(f"Error getting all users: {e}")
+            return []
