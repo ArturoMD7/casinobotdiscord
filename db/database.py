@@ -143,10 +143,12 @@ class Database:
             raise
 
     def get_all_users(self) -> list:
-        """Obtiene una lista de todos los user_ids en la base de datos"""
         try:
-            self.cursor.execute("SELECT user_id FROM users")
-            users = [row[0] for row in self.cursor.fetchall()]
+            self.ensure_connection()
+            cursor = self.conn.cursor()  # Crear un cursor nuevo
+            cursor.execute("SELECT user_id FROM users")
+            users = [row[0] for row in cursor.fetchall()]
+            cursor.close()  # Cerrar el cursor
             return users
         except Exception as e:
             print(f"Error getting all users: {e}")

@@ -323,18 +323,39 @@ class Economy(commands.Cog):
             # Obtener todos los usuarios de la base de datos
             all_users = db.get_all_users()
             total_users = len(all_users)
+            
+            if total_users == 0:
+                await loading_msg.edit(content="❌ No se encontraron usuarios en la base de datos.")
+                return
+            
             updated_count = 0
             
+            # Mostrar progreso
+            progress_msg = await ctx.send(f"📊 Progreso: 0/{total_users} usuarios actualizados...")
+            
             # Actualizar cada usuario individualmente
-            for user_id in all_users:
-                # Obtener créditos actuales para calcular la diferencia
-                current_credits = db.get_credits(user_id)
-                difference = 10000 - current_credits
-                
-                # Actualizar créditos a 10,000
-                if difference != 0:
-                    db.update_credits(user_id, difference, "admin", "restart", "Restablecimiento global de créditos")
+            for i, user_id in enumerate(all_users):
+                # Establecer directamente los créditos a 10,000
+                # En lugar de calcular la diferencia, actualizamos directamente
+                try:
+                    # Usar una consulta UPDATE directa
+                    db.ensure_connection()
+                    cursor = db.conn.cursor()
+                    cursor.execute("UPDATE users SET credits = 10000 WHERE user_id = %s", (user_id,))
+                    db.conn.commit()
+                    cursor.close()
                     updated_count += 1
+                    
+                    # Actualizar mensaje de progreso cada 10 usuarios
+                    if (i + 1) % 10 == 0 or (i + 1) == total_users:
+                        await progress_msg.edit(content=f"📊 Progreso: {i + 1}/{total_users} usuarios actualizados...")
+                        
+                except Exception as e:
+                    print(f"Error actualizando usuario {user_id}: {e}")
+                    continue
+            
+            # Eliminar mensaje de progreso
+            await progress_msg.delete()
             
             embed = discord.Embed(
                 title="✅ CRÉDITOS RESTABLECIDOS",
@@ -343,7 +364,7 @@ class Economy(commands.Cog):
             )
             embed.add_field(
                 name="📊 Resumen",
-                value=f"**Usarios totales:** {total_users}\n**Usarios actualizados:** {updated_count}",
+                value=f"**Usuarios totales:** {total_users}\n**Usuarios actualizados:** {updated_count}",
                 inline=True
             )
             embed.add_field(
@@ -351,6 +372,14 @@ class Economy(commands.Cog):
                 value="Todos los usuarios ahora tienen **10,000 créditos**",
                 inline=True
             )
+            
+            if updated_count < total_users:
+                embed.add_field(
+                    name="⚠️ Nota",
+                    value=f"{total_users - updated_count} usuarios no pudieron ser actualizados",
+                    inline=False
+                )
+            
             embed.set_footer(text="Restablecimiento completado exitosamente")
             
             await loading_msg.edit(embed=embed)
