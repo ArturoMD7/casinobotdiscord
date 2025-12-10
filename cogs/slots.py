@@ -37,7 +37,7 @@ class Slots(commands.Cog):
             await ctx.send("❌ Apuesta mínima: 10 créditos")
             return
 
-        credits = db.get_credits(ctx.author.id)
+        credits = db.get_saldo(ctx.author.id)
         if bet > credits:
             await ctx.send(f"❌ No tienes suficientes créditos. Balance: {credits:,}")
             return
@@ -81,9 +81,9 @@ class Slots(commands.Cog):
         
         # Actualizar créditos en la base de datos
         if net_win > 0:
-            db.update_credits(ctx.author.id, net_win, "win", "slots", f"Slots: {result}{multiplicador_texto}")
+            db.update_saldo(ctx.author.id, net_win, "win", "slots", f"Slots: {result}{multiplicador_texto}")
         else:
-            db.update_credits(ctx.author.id, -bet, "loss", "slots", f"Slots: {result}")
+            db.update_saldo(ctx.author.id, -bet, "loss", "slots", f"Slots: {result}")
 
         # Crear embed
         embed = discord.Embed(

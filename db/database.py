@@ -1,155 +1,99 @@
-import mysql.connector
-from mysql.connector import Error
-from config import DB_CONFIG, STARTING_CREDITS
+from supabase import create_client, Client
+import os
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE")
+
 class Database:
     def __init__(self):
-        self.conn = None
-        self.connect()
+        self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    def connect(self):
-        """Conecta a la base de datos con reintentos"""
-        max_retries = 3
-        retry_delay = 2  # segundos
-        
-        for attempt in range(max_retries):
-            try:
-                self.conn = mysql.connector.connect(**DB_CONFIG)
-                logger.info("✅ Conectado a la base de datos")
-                return
-            except Error as e:
-                logger.error(f"❌ Error conectando a la base de datos (intento {attempt + 1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                else:
-                    raise  # Relanzar el error después de todos los intentos
-
-    def ensure_connection(self):
-        """Verifica y restablece la conexión si es necesario"""
+    # ============================
+    # GET SALDO
+    # ============================
+    def get_saldo(self, discord_id: str) -> int | None:
+        """
+        Devuelve el saldo de un usuario vinculado.
+        """
         try:
-            if self.conn is None or not self.conn.is_connected():
-                logger.warning("🔌 Reconectando a la base de datos...")
-                self.connect()
-            return True
-        except Error as e:
-            logger.error(f"❌ Error en ensure_connection: {e}")
-            raise
-
-    def ensure_user(self, user_id: int):
-        try:
-            self.ensure_connection()
-            cursor = self.conn.cursor()
-            cursor.execute("""
-                INSERT IGNORE INTO users (user_id, credits) 
-                VALUES (%s, %s)
-            """, (user_id, STARTING_CREDITS))
-            self.conn.commit()
-            cursor.close()
-        except Error as e:
-            logger.error(f"❌ Error asegurando usuario: {e}")
-            self.conn.rollback()
-            raise
-
-    def get_credits(self, user_id: int) -> int:
-        try:
-            self.ensure_connection()
-            self.ensure_user(user_id)
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT credits FROM users WHERE user_id = %s", (user_id,))
-            result = cursor.fetchone()
-            cursor.close()
-            return result[0] if result else STARTING_CREDITS
-        except Error as e:
-            logger.error(f"❌ Error obteniendo créditos: {e}")
-            raise
-
-    def update_credits(self, user_id: int, amount: int, transaction_type: str = "game", game_type: str = "", details: str = ""):
-        try:
-            self.ensure_connection()
-            cursor = self.conn.cursor()
+            res = self.client.table("profiles")\
+                .select("saldo")\
+                .eq("discord_id", discord_id)\
+                .maybe_single()\
+                .execute()
             
-            # Actualizar créditos
-            cursor.execute("UPDATE users SET credits = credits + %s WHERE user_id = %s", (amount, user_id))
-            
-            # Registrar transacción (si la tabla existe)
-            try:
-                cursor.execute("""
-                    INSERT INTO transactions (user_id, type, amount, game_type, details)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (user_id, transaction_type, amount, game_type, details))
-            except Error:
-                pass  # Ignorar si la tabla de transacciones no existe
-            
-            # Actualizar estadísticas si es una apuesta
-            if transaction_type in ['win', 'loss']:
-                try:
-                    if amount > 0:  # Ganancia
-                        cursor.execute("""
-                            UPDATE users SET 
-                            games_won = games_won + 1,
-                            total_winnings = total_winnings + %s,
-                            games_played = games_played + 1
-                            WHERE user_id = %s
-                        """, (amount, user_id))
-                    else:  # Pérdida
-                        cursor.execute("""
-                            UPDATE users SET games_played = games_played + 1 
-                            WHERE user_id = %s
-                        """, (user_id,))
-                except Error:
-                    pass  # Ignorar si las columnas de estadísticas no existen
-            
-            self.conn.commit()
-            cursor.close()
-            return True
-        except Error as e:
-            logger.error(f"❌ Error actualizando créditos: {e}")
-            self.conn.rollback()
-            raise
-
-    def get_user_stats(self, user_id: int) -> dict:
-        try:
-            self.ensure_connection()
-            cursor = self.conn.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT credits, games_played, games_won, total_winnings 
-                FROM users WHERE user_id = %s
-            """, (user_id,))
-            stats = cursor.fetchone()
-            cursor.close()
-            return stats or {}
-        except Error as e:
-            logger.error(f"❌ Error obteniendo estadísticas: {e}")
-            raise
-
-    def save_blackjack_game(self, user_id: int, bet_amount: int, result: str, payout: int, player_hand: list, dealer_hand: list):
-        try:
-            self.ensure_connection()
-            cursor = self.conn.cursor()
-            cursor.execute("""
-                INSERT INTO blackjack_sessions (user_id, bet_amount, result, payout, player_hand, dealer_hand)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (user_id, bet_amount, result, payout, str(player_hand), str(dealer_hand)))
-            self.conn.commit()
-            cursor.close()
-            return True
-        except Error as e:
-            logger.error(f"❌ Error guardando partida de blackjack: {e}")
-            # No hacer rollback para no afectar la actualización de créditos
-            raise
-
-    def get_all_users(self) -> list:
-        try:
-            self.ensure_connection()
-            cursor = self.conn.cursor()  # Crear un cursor nuevo
-            cursor.execute("SELECT user_id FROM users")
-            users = [row[0] for row in cursor.fetchall()]
-            cursor.close()  # Cerrar el cursor
-            return users
+            if res.data:
+                return res.data["saldo"]
+            return None
         except Exception as e:
-            print(f"Error getting all users: {e}")
-            return []
+            logger.error(f"Error en get_saldo: {e}")
+            return None
+
+    # ============================
+    # UPDATE SALDO (CORREGIDO)
+    # ============================
+    def update_saldo(self, discord_id: str, amount: int, transaction_type="game", game_type="", details=""):
+        """
+        Actualiza saldo mediante RPC segura.
+        """
+        try:
+            # Llamar a la función RPC
+            res = self.client.rpc("increment_profile_saldo", {
+                "p_discord_id": discord_id,
+                "p_amount": amount
+            }).execute()
+            
+            # En versiones recientes, res es una tupla o tiene diferente estructura
+            # Verificamos si hubo éxito de diferentes maneras
+            
+            # Método 1: Verificar si hay datos o si es None
+            if res is None:
+                logger.error("RPC returned None")
+                return False
+                
+            # Método 2: Verificar si es una respuesta exitosa (204 No Content es normal para RPC)
+            # El RPC puede devolver 204 sin contenido, lo cual es exitoso
+            
+            # Registrar en historial (no bloquear si falla el historial)
+            try:
+                self.client.table("transactions_bot").insert({
+                    "discord_id": discord_id,
+                    "amount": amount,
+                    "type": transaction_type,
+                    "game_type": game_type,
+                    "details": details
+                }).execute()
+            except Exception as hist_error:
+                logger.warning(f"Error al registrar historial: {hist_error}")
+                # No retornamos False porque el saldo sí se actualizó
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error en update_saldo: {e}")
+            return False
+
+    # ============================
+    # VINCULAR EMAIL ↔ DISCORD
+    # ============================
+    def link_discord_to_profile(self, discord_id: str, email: str):
+        """
+        Busca ese email en profiles y le asigna el discord_id.
+        """
+        try:
+            res = self.client.table("profiles").select("id").eq("email", email).maybe_single().execute()
+
+            if not res.data:
+                return False  # No existe ese email
+
+            self.client.table("profiles").update({
+                "discord_id": discord_id
+            }).eq("email", email).execute()
+
+            return True
+        except Exception as e:
+            logger.error(f"Error en link_discord_to_profile: {e}")
+            return False

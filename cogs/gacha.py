@@ -94,7 +94,7 @@ class GachaView(View):
                 return
         
         # Verificar créditos
-        credits = db.get_credits(user_id)
+        credits = db.get_saldo(user_id)
         if credits < caja["costo"]:
             await interaction.response.send_message(
                 f"❌ No tienes suficientes créditos. Necesitas: {caja['costo']:,}", 
@@ -103,7 +103,7 @@ class GachaView(View):
             return
         
         # Cobrar costo
-        db.update_credits(user_id, -caja["costo"], "gacha", "compra_caja", f"Compra {caja['nombre']}")
+        db.update_saldo(user_id, -caja["costo"], "gacha", "compra_caja", f"Compra {caja['nombre']}")
         
         # Animación de apertura
         embed_animacion = discord.Embed(
@@ -137,7 +137,7 @@ class GachaView(View):
         mensaje_resultado = ""
         if premio["tipo"] == "creditos":
             valor_final = int(premio["valor"] * bono_rareza["multiplicador"])
-            db.update_credits(user_id, valor_final, "bonus", "gacha_premio", f"{premio['nombre']} de {caja['nombre']}")
+            db.update_saldo(user_id, valor_final, "bonus", "gacha_premio", f"{premio['nombre']} de {caja['nombre']}")
             mensaje_resultado = f"**+{valor_final:,} créditos**"
         elif premio["tipo"] == "multiplicador":
             if user_id not in cog.bonos_activos:

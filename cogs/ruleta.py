@@ -44,7 +44,7 @@ class Ruleta(commands.Cog):
             await ctx.send("❌ Apuesta mínima: 10 créditos")
             return
 
-        credits = db.get_credits(ctx.author.id)
+        credits = db.get_saldo(ctx.author.id)
         if bet > credits:
             await ctx.send(f"❌ No tienes suficientes créditos. Balance: {credits:,}")
             return
@@ -201,7 +201,7 @@ class Ruleta(commands.Cog):
             usos_restantes = 0
 
         # Actualizar créditos en la base de datos
-        db.update_credits(ctx.author.id, ganancia_neto, "win" if gano else "loss", "ruleta", 
+        db.update_saldo(ctx.author.id, ganancia_neto, "win" if gano else "loss", "ruleta", 
                          f"Ruleta: {tipo} {apuesta} -> {numero_ganador}")
 
         # Crear embed
@@ -223,7 +223,7 @@ class Ruleta(commands.Cog):
             )
         
         embed.add_field(name="🎰 Resultado", value=resultado_texto, inline=False)
-        embed.add_field(name="💳 Balance nuevo", value=f"{db.get_credits(ctx.author.id):,} créditos", inline=True)
+        embed.add_field(name="💳 Balance nuevo", value=f"{db.get_saldo(ctx.author.id):,} créditos", inline=True)
         
         await ctx.send(embed=embed)
 

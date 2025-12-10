@@ -40,7 +40,7 @@ class PokerGame:
             return False
         
         # Usa la DB real para obtener los créditos
-        credits = db.get_credits(user_id)
+        credits = db.get_saldo(user_id)
         if credits < self.big_blind * 10:
             return False
             
@@ -107,7 +107,7 @@ class PokerGame:
         bet_amount = min(amount, player["chips"])
         
         # Usa la DB real para actualizar créditos
-        success = db.update_credits(player_id, -bet_amount, "bet", "poker", f"Apuesta poker: {bet_amount}")
+        success = db.update_saldo(player_id, -bet_amount, "bet", "poker", f"Apuesta poker: {bet_amount}")
         if not success: return False
             
         player["chips"] -= bet_amount
@@ -202,13 +202,13 @@ class PokerGame:
 
     def award_pot(self, player_id: int, amount: int, hand_name: str):
         # Usa la DB real con transaction_type='win'
-        db.update_credits(player_id, amount, "win", "poker", f"Gana con {hand_name}")
+        db.update_saldo(player_id, amount, "win", "poker", f"Gana con {hand_name}")
         if player_id in self.players: self.players[player_id]["chips"] += amount
 
     def record_losses(self, loser_ids: List[int]):
         # Registra la partida jugada para los perdedores
         for loser_id in loser_ids:
-            db.update_credits(loser_id, 0, "loss", "poker", "Participó en la mano")
+            db.update_saldo(loser_id, 0, "loss", "poker", "Participó en la mano")
             
     def get_game_state(self) -> dict:
         player_states = {}

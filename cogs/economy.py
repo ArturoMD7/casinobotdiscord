@@ -28,7 +28,7 @@ class Economy(commands.Cog):
     @commands.command(name="balance", aliases=["bal", "credits"])
     async def balance(self, ctx):
         """Muestra el balance de créditos del usuario"""
-        credits = db.get_credits(ctx.author.id)
+        credits = db.get_saldo(ctx.author.id)
         rango_actual = self.calcular_rango(credits)
         rango_info = RANGOS[rango_actual]
         
@@ -93,7 +93,7 @@ class Economy(commands.Cog):
         current_time = time.time()
         
         # Obtener créditos actuales y calcular rango
-        credits = db.get_credits(user_id)
+        credits = db.get_saldo(user_id)
         rango_actual = self.calcular_rango(credits)
         
         # Calcular daily base + bono de rango
@@ -116,7 +116,7 @@ class Economy(commands.Cog):
                 return
         
         # Dar los créditos diarios
-        db.update_credits(user_id, daily_total, "bonus", "daily", f"Recompensa diaria + bono rango {rango_actual}")
+        db.update_saldo(user_id, daily_total, "bonus", "daily", f"Recompensa diaria + bono rango {rango_actual}")
         last_daily[user_id] = current_time
         
         rango_info = RANGOS[rango_actual]
@@ -132,7 +132,7 @@ class Economy(commands.Cog):
             embed.add_field(name="🎁 Bono de rango", value=f"**+{bono_rango}** créditos", inline=True)
         
         embed.add_field(name="💰 Total obtenido", value=f"**+{daily_total}** créditos", inline=True)
-        embed.add_field(name="💳 Balance actual", value=f"**{db.get_credits(user_id):,}** créditos", inline=False)
+        embed.add_field(name="💳 Balance actual", value=f"**{db.get_saldo(user_id):,}** créditos", inline=False)
         embed.add_field(name="🎯 Tu rango", value=f"**{rango_info['nombre']}**", inline=True)
         embed.add_field(name="⏰ Próximo daily", value="En 24 horas", inline=True)
         
@@ -161,19 +161,19 @@ class Economy(commands.Cog):
             await ctx.send("❌ No puedes transferirte créditos a ti mismo.")
             return
         
-        sender_credits = db.get_credits(ctx.author.id)
+        sender_credits = db.get_saldo(ctx.author.id)
         if amount > sender_credits:
             await ctx.send(f"❌ No tienes suficientes créditos. Tu balance: {sender_credits:,}")
             return
         
         # Aplicar multiplicador de rango si es ganancia para el receptor
-        rango_receptor = self.calcular_rango(db.get_credits(member.id))
+        rango_receptor = self.calcular_rango(db.get_saldo(member.id))
         multiplicador = BONOS_RANGO.get(rango_receptor, {"multiplicador_ganancias": 1.0})["multiplicador_ganancias"]
         cantidad_final = int(amount * multiplicador) if multiplicador > 1.0 else amount
         
         # Realizar transferencia
-        db.update_credits(ctx.author.id, -amount, "transfer", "transfer", f"Transferido a {member.display_name}")
-        db.update_credits(member.id, cantidad_final, "transfer", "transfer", f"Recibido de {ctx.author.display_name}")
+        db.update_saldo(ctx.author.id, -amount, "transfer", "transfer", f"Transferido a {member.display_name}")
+        db.update_saldo(member.id, cantidad_final, "transfer", "transfer", f"Recibido de {ctx.author.display_name}")
         
         embed = discord.Embed(
             title="💸 Transferencia Exitosa",
@@ -186,7 +186,7 @@ class Economy(commands.Cog):
         if cantidad_final > amount:
             embed.add_field(name="🎁 Bono de Rango", value=f"Recibido: {cantidad_final:,} créditos (+{int((multiplicador-1)*100)}%)", inline=True)
         
-        embed.add_field(name="Tu nuevo balance", value=f"{db.get_credits(ctx.author.id):,} créditos", inline=False)
+        embed.add_field(name="Tu nuevo balance", value=f"{db.get_saldo(ctx.author.id):,} créditos", inline=False)
         
         await ctx.send(embed=embed)
 
@@ -198,10 +198,10 @@ class Economy(commands.Cog):
             await ctx.send("❌ No puedes robarte a ti mismo.")
             return
 
-        robber_credits = db.get_credits(ctx.author.id)
-        target_credits = db.get_credits(member.id)
+        robber_credits = db.get_saldo(ctx.author.id)
+        target_saldo = db.get_saldo(member.id)
 
-        if target_credits < 100:
+        if target_saldo < 100:
             await ctx.send("❌ El usuario objetivo no tiene suficientes créditos.")
             return
 
@@ -209,21 +209,21 @@ class Economy(commands.Cog):
         success = random.random() < 0.4
 
         # Determinar monto máximo posible de robo según quién tiene más créditos
-        if robber_credits > target_credits:
-            max_rob_amount = int(target_credits * random.uniform(0.10, 0.25))
+        if robber_credits > target_saldo:
+            max_rob_amount = int(target_saldo * random.uniform(0.10, 0.25))
         else:
             max_rob_amount = int(robber_credits * 0.25)
 
         rango_actual = self.calcular_rango(robber_credits)
         multiplicador = BONOS_RANGO.get(rango_actual, {"multiplicador_ganancias": 1.0})["multiplicador_ganancias"]
 
-        actual_rob_amount = min(max_rob_amount, target_credits)
+        actual_rob_amount = min(max_rob_amount, target_saldo)
         amount_final = int(actual_rob_amount * multiplicador) if success and multiplicador > 1.0 else actual_rob_amount
 
         if success:
             # Robo exitoso
-            db.update_credits(ctx.author.id, amount_final, "bonus", "rob", f"Robado a {member.display_name}")
-            db.update_credits(member.id, -actual_rob_amount, "loss", "rob", f"Robado por {ctx.author.display_name}")
+            db.update_saldo(ctx.author.id, amount_final, "bonus", "rob", f"Robado a {member.display_name}")
+            db.update_saldo(member.id, -actual_rob_amount, "loss", "rob", f"Robado por {ctx.author.display_name}")
 
             embed = discord.Embed(
                 title="🎭 ¡Robo Exitoso!",
@@ -241,8 +241,8 @@ class Economy(commands.Cog):
         else:
             # Robo fallido
             fine_amount = int(max_rob_amount)
-            db.update_credits(ctx.author.id, -fine_amount, "loss", "rob", f"Intento fallido contra {member.display_name}")
-            db.update_credits(member.id, fine_amount, "bonus", "rob", f"Defendió un robo de {ctx.author.display_name}")
+            db.update_saldo(ctx.author.id, -fine_amount, "loss", "rob", f"Intento fallido contra {member.display_name}")
+            db.update_saldo(member.id, fine_amount, "bonus", "rob", f"Defendió un robo de {ctx.author.display_name}")
 
             embed = discord.Embed(
                 title="🚨 ¡Robo Fallido!",

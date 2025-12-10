@@ -32,7 +32,7 @@ class BlackjackView(View):
         if game_key in games:
             game = games[game_key]
             if not game.finished:
-                db.update_credits(self.user_id, -game.bet, "loss", "blackjack", "Timeout")
+                db.update_saldo(self.user_id, -game.bet, "loss", "blackjack", "Timeout")
             del games[game_key]
     
     def update_buttons_state(self):
@@ -83,7 +83,7 @@ class BlackjackView(View):
                             usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
                             game.usos_restantes = usos_restantes
             
-            db.update_credits(self.user_id, game.payout, "loss" if game.payout < 0 else "win", "blackjack", f"Blackjack: {result}")
+            db.update_saldo(self.user_id, game.payout, "loss" if game.payout < 0 else "win", "blackjack", f"Blackjack: {result}")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
             del games[game_key]
             
@@ -123,7 +123,7 @@ class BlackjackView(View):
                         usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
                         game.usos_restantes = usos_restantes
         
-        db.update_credits(self.user_id, game.payout, "win" if game.payout > 0 else "loss" if game.payout < 0 else "draw", "blackjack", f"Blackjack: {result}")
+        db.update_saldo(self.user_id, game.payout, "win" if game.payout > 0 else "loss" if game.payout < 0 else "draw", "blackjack", f"Blackjack: {result}")
         db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
         del games[game_key]
         
@@ -155,7 +155,7 @@ class BlackjackView(View):
             await interaction.response.send_message("❌ Solo puedes doblar en tu primera jugada con 2 cartas.", ephemeral=True)
             return
         
-        credits = db.get_credits(self.user_id)
+        credits = db.get_saldo(self.user_id)
         if game.bet * 2 > credits:
             await interaction.response.send_message("❌ No tienes suficientes créditos para doblar.", ephemeral=True)
             return
@@ -164,7 +164,7 @@ class BlackjackView(View):
         state = game.get_game_state()
         
         if result == "bust":
-            db.update_credits(self.user_id, game.payout, "loss", "blackjack", "Blackjack: double bust")
+            db.update_saldo(self.user_id, game.payout, "loss", "blackjack", "Blackjack: double bust")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
             del games[game_key]
             
@@ -191,7 +191,7 @@ class BlackjackView(View):
                             usos_restantes = gacha_cog.bonos_activos[self.user_id]["multiplicador"]["usos_restantes"]
                             game.usos_restantes = usos_restantes
             
-            db.update_credits(self.user_id, game.payout, "win" if game.payout > 0 else "loss", "blackjack", f"Blackjack: double {result}")
+            db.update_saldo(self.user_id, game.payout, "win" if game.payout > 0 else "loss", "blackjack", f"Blackjack: double {result}")
             db.save_blackjack_game(self.user_id, game.bet, game.result, game.payout, game.player_hand, game.dealer_hand)
             del games[game_key]
             
@@ -223,7 +223,7 @@ class BlackjackView(View):
             return
         
         refund = game.bet // 2
-        db.update_credits(self.user_id, -refund, "loss", "blackjack", "Blackjack: surrender")
+        db.update_saldo(self.user_id, -refund, "loss", "blackjack", "Blackjack: surrender")
         db.save_blackjack_game(self.user_id, game.bet, "surrender", -refund, game.player_hand, game.dealer_hand)
         del games[game_key]
         
@@ -365,7 +365,7 @@ class Blackjack(commands.Cog):
             await ctx.send(f"❌ Apuesta máxima: {MAX_BET:,} créditos")
             return
         
-        credits = db.get_credits(user_id)
+        credits = db.get_saldo(user_id)
         if bet > credits:
             await ctx.send(f"❌ No tienes suficientes créditos. Tu balance: {credits:,}")
             return

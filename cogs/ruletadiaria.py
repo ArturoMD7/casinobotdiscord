@@ -96,7 +96,7 @@ class RuletaDiariaView(View):
             if premio["tipo"] == "creditos":
                 ganancia_final = premio["valor"]
                 
-                db.update_credits(user_id, ganancia_final, "bonus", "ruleta_diaria", f"Ruleta: {premio['nombre']}")
+                db.update_saldo(user_id, ganancia_final, "bonus", "ruleta_diaria", f"Ruleta: {premio['nombre']}")
                 mensaje_resultado = f"**+{ganancia_final:,} créditos**"
                 
             elif premio["tipo"] == "multiplicador":

@@ -2,6 +2,9 @@ import discord
 from discord.ext import commands
 import asyncio
 import logging
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # Configurar logging
 logging.basicConfig(
@@ -29,7 +32,9 @@ async def load_cogs():
         "cogs.gacha",
         "cogs.ruletadiaria",
         "cogs.poker",
-        "cogs.videopoker"
+        "cogs.videopoker",
+        "cogs.vincular"
+
     ]
     
     for cog in cogs:

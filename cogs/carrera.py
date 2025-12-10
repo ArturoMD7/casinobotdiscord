@@ -39,7 +39,7 @@ class CarreraView(View):
             return
         
         # Verificar créditos
-        credits = db.get_credits(interaction.user.id)
+        credits = db.get_saldo(interaction.user.id)
         if credits < carrera['apuesta']:
             await interaction.response.send_message(f"❌ No tienes suficientes créditos. Necesitas: {carrera['apuesta']:,}", ephemeral=True)
             return
@@ -82,7 +82,7 @@ class CarreraView(View):
         
         # Cobrar apuestas a todos los jugadores
         for jugador_id in list(carrera['jugadores'].keys()):
-            db.update_credits(jugador_id, -carrera['apuesta'], "bet", "carrera", "Apuesta carrera de buses")
+            db.update_saldo(jugador_id, -carrera['apuesta'], "bet", "carrera", "Apuesta carrera de buses")
             carrera['jugadores'][jugador_id]['apostado'] = True
         
         # Iniciar carrera
@@ -232,7 +232,7 @@ class CarreraView(View):
             premio = carrera['apuesta'] * len(carrera['jugadores'])
             
             # Pagar al ganador
-            db.update_credits(ganador_id, premio, "win", "carrera", f"Ganó carrera de buses")
+            db.update_saldo(ganador_id, premio, "win", "carrera", f"Ganó carrera de buses")
             
             embed = discord.Embed(
                 title="🏆 **¡TENEMOS GANADOR!** 🏆",
@@ -321,7 +321,7 @@ class Carrera(commands.Cog):
             return
         
         # Verificar créditos del creador
-        credits = db.get_credits(ctx.author.id)
+        credits = db.get_saldo(ctx.author.id)
         if credits < apuesta:
             await ctx.send(f"❌ No tienes suficientes créditos. Necesitas: {apuesta:,}")
             return

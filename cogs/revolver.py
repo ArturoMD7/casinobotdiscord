@@ -53,7 +53,7 @@ class RuletaRusa(commands.Cog):
             return
 
         # Verificar créditos
-        credits = db.get_credits(ctx.author.id)
+        credits = db.get_saldo(ctx.author.id)
         if bet > credits:
             await ctx.send(f"❌ **No tienes suficientes créditos.**\nTu balance: {credits:,} créditos")
             return
@@ -95,7 +95,7 @@ class RuletaRusa(commands.Cog):
         juego = self.juegos_activos[user_id]
         
         # Descontar apuesta del jugador
-        db.update_credits(user_id, -bet, "bet", "ruletarusa", "Apuesta vs máquina")
+        db.update_saldo(user_id, -bet, "bet", "ruletarusa", "Apuesta vs máquina")
         
         # Mensaje de inicio
         embed = discord.Embed(
@@ -123,7 +123,7 @@ class RuletaRusa(commands.Cog):
             return
 
         # Verificar créditos del oponente
-        credits_oponente = db.get_credits(oponente_id)
+        credits_oponente = db.get_saldo(oponente_id)
         if bet > credits_oponente:
             await ctx.send(f"❌ **{oponente.mention} no tiene suficientes créditos para esta apuesta.**")
             return
@@ -152,8 +152,8 @@ class RuletaRusa(commands.Cog):
             @discord.ui.button(label="✅ ACEPTAR RETO", style=discord.ButtonStyle.success)
             async def aceptar(self, interaction: discord.Interaction, button: discord.ui.Button):
                 # Verificar que ambos todavía tienen créditos
-                credits1 = db.get_credits(self.retador.id)
-                credits2 = db.get_credits(self.oponente.id)
+                credits1 = db.get_saldo(self.retador.id)
+                credits2 = db.get_saldo(self.oponente.id)
                 
                 if credits1 < self.bet or credits2 < self.bet:
                     await interaction.response.edit_message(
@@ -183,8 +183,8 @@ class RuletaRusa(commands.Cog):
                 juego = self.cog.juegos_activos[self.retador.id]
 
                 # Descontar apuestas
-                db.update_credits(self.retador.id, -self.bet, "bet", "ruletarusa", f"Apuesta vs {self.oponente}")
-                db.update_credits(self.oponente.id, -self.bet, "bet", "ruletarusa", f"Apuesta vs {self.retador}")
+                db.update_saldo(self.retador.id, -self.bet, "bet", "ruletarusa", f"Apuesta vs {self.oponente}")
+                db.update_saldo(self.oponente.id, -self.bet, "bet", "ruletarusa", f"Apuesta vs {self.retador}")
 
                 # Mensaje de inicio del juego
                 embed = discord.Embed(
@@ -347,7 +347,7 @@ class RuletaRusa(commands.Cog):
         if hay_bala:
             # 💀 MÁQUINA MUERE - JUGADOR GANA
             bote = juego['apuesta'] * 2
-            db.update_credits(juego['jugador1'].id, bote, "win", "ruletarusa", "Ganó vs máquina")
+            db.update_saldo(juego['jugador1'].id, bote, "win", "ruletarusa", "Ganó vs máquina")
             
             embed_victoria = discord.Embed(
                 title="🎉 ¡BANG! ¡LA MÁQUINA MURIÓ!",
@@ -355,7 +355,7 @@ class RuletaRusa(commands.Cog):
                 color=0x00ff00
             )
             embed_victoria.add_field(name="💰 BOTE GANADO", value=f"**{bote:,}** créditos", inline=True)
-            embed_victoria.add_field(name="💳 BALANCE NUEVO", value=f"**{db.get_credits(juego['jugador1'].id):,}** créditos", inline=True)
+            embed_victoria.add_field(name="💳 BALANCE NUEVO", value=f"**{db.get_saldo(juego['jugador1'].id):,}** créditos", inline=True)
             embed_victoria.add_field(name="🎯 BALA ENCONTRADA", value=f"**Cámara {juego['bala_posicion']}**", inline=True)
             embed_victoria.set_image(url="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjZjejQ2MHR5bGt4cmo2NDZyZXBnd3R3eGNrM3cwbjRvYW8xb2p3MSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/YBsd8wdchmxqg/giphy.gif")
             
@@ -424,10 +424,10 @@ class RuletaRusa(commands.Cog):
             # PvP - El otro jugador gana
             if jugador_muerto.id == juego['jugador1'].id:
                 ganador = juego['jugador2']
-                db.update_credits(ganador.id, bote, "win", "ruletarusa", f"Ganó vs {jugador_muerto}")
+                db.update_saldo(ganador.id, bote, "win", "ruletarusa", f"Ganó vs {jugador_muerto}")
             else:
                 ganador = juego['jugador1']
-                db.update_credits(ganador.id, bote, "win", "ruletarusa", f"Ganó vs {jugador_muerto}")
+                db.update_saldo(ganador.id, bote, "win", "ruletarusa", f"Ganó vs {jugador_muerto}")
             
             embed_muerte = discord.Embed(
                 title="💀 ¡BANG! ¡JUGADOR ELIMINADO!",

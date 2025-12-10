@@ -145,7 +145,7 @@ class VideoPokerGameView(View):
             # Registrar el premio en la base de datos
             db = Database()
             if prize_final > 0:
-                db.update_credits(self.ctx.author.id, prize_final, "win", "videopoker", f"Gana con {hand_name}")
+                db.update_saldo(self.ctx.author.id, prize_final, "win", "videopoker", f"Gana con {hand_name}")
             
             # Crear el embed final
             result_text = f"**Conseguiste: {hand_name}!**\n"
@@ -238,12 +238,12 @@ class VideoPoker(commands.Cog):
         if bet <= 0:
             return await ctx.send("❌ La apuesta debe ser un número positivo.")
         
-        user_credits = self.db.get_credits(ctx.author.id)
+        user_credits = self.db.get_saldo(ctx.author.id)
         if user_credits < bet:
             return await ctx.send(f"❌ No tienes suficientes créditos. Tienes {user_credits} créditos.")
 
         # Iniciar el juego
-        self.db.update_credits(ctx.author.id, -bet, "bet", "videopoker", f"Apuesta inicial: {bet}")
+        self.db.update_saldo(ctx.author.id, -bet, "bet", "videopoker", f"Apuesta inicial: {bet}")
         
         view = VideoPokerGameView(ctx, bet)
         initial_embed = view.create_game_embed("Mano Inicial")

@@ -175,7 +175,7 @@ class TiendaMarcosView(View):
         cursor.close()
         
         # Restar créditos
-        db.update_credits(self.user_id, -marco_info["precio"], "compra", "marco_perfil", f"Compra marco: {marco_info['nombre']}")
+        db.update_saldo(self.user_id, -marco_info["precio"], "compra", "marco_perfil", f"Compra marco: {marco_info['nombre']}")
         
         embed = discord.Embed(
             title="🎊 ¡Marco Comprado!",
@@ -236,7 +236,7 @@ class Rangos(commands.Cog):
     def actualizar_rango_usuario(self, user_id: int) -> int:
         """Actualiza el rango de un usuario si es necesario y devuelve el nuevo rango"""
         try:
-            credits = db.get_credits(user_id)
+            credits = db.get_saldo(user_id)
             nuevo_rango = self.calcular_rango(credits)
             
             # Obtener el rango actual desde la base de datos
@@ -254,7 +254,7 @@ class Rangos(commands.Cog):
                 if nuevo_rango > rango_actual:
                     bono = BONOS_RANGO.get(nuevo_rango, {}).get('bono_subida', 0)
                     if bono > 0:
-                        db.update_credits(user_id, bono, "bonus", "rango_up", f"Bono por subir a rango {nuevo_rango}")
+                        db.update_saldo(user_id, bono, "bonus", "rango_up", f"Bono por subir a rango {nuevo_rango}")
             
             cursor.close()
             return nuevo_rango
@@ -302,7 +302,7 @@ class Rangos(commands.Cog):
         
         # Forzar actualización del rango antes de mostrar
         rango_actual = self.actualizar_rango_usuario(user_id)
-        credits = db.get_credits(user_id)
+        credits = db.get_saldo(user_id)
         
         # Obtener marco del usuario
         marco_usuario = self.obtener_marco_usuario(user_id)
@@ -399,7 +399,7 @@ class Rangos(commands.Cog):
     # CORREGIDO: Métodos auxiliares para los callbacks
     async def marcos_tienda_context(self, interaction: discord.Interaction):
         """Versión del comando marcos_tienda para usar en callbacks"""
-        credits = db.get_credits(interaction.user.id)
+        credits = db.get_saldo(interaction.user.id)
         
         embed = discord.Embed(
             title="🛍️ Tienda de Marcos de Perfil",
@@ -508,7 +508,7 @@ class Rangos(commands.Cog):
 
     async def marcos_tienda(self, ctx):
         """Muestra la tienda de marcos"""
-        credits = db.get_credits(ctx.author.id)
+        credits = db.get_saldo(ctx.author.id)
         
         embed = discord.Embed(
             title="🛍️ Tienda de Marcos de Perfil",

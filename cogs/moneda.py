@@ -38,7 +38,7 @@ class MonedaView(View):
 
     async def procesar_solitario(self, interaction: discord.Interaction, eleccion: str):
         # Verificar créditos
-        credits = db.get_credits(self.user_id)
+        credits = db.get_saldo(self.user_id)
         if credits < self.apuesta:
             await interaction.response.send_message("❌ No tienes suficientes créditos.", ephemeral=True)
             return
@@ -81,7 +81,7 @@ class MonedaView(View):
             tipo_transaccion = "loss"
 
         # Actualizar créditos
-        db.update_credits(self.user_id, ganancia_neto, tipo_transaccion, "moneda", 
+        db.update_saldo(self.user_id, ganancia_neto, tipo_transaccion, "moneda", 
                          f"Moneda: {eleccion} vs {resultado}")
 
         embed = discord.Embed(
@@ -104,7 +104,7 @@ class MonedaView(View):
         else:
             embed.add_field(name="💸 Resultado", value=f"**{'+' if ganancia_neto > 0 else ''}{ganancia_neto:,}** créditos", inline=True)
         
-        embed.add_field(name="💳 Balance nuevo", value=f"**{db.get_credits(self.user_id):,}** créditos", inline=True)
+        embed.add_field(name="💳 Balance nuevo", value=f"**{db.get_saldo(self.user_id):,}** créditos", inline=True)
         
         await interaction.response.edit_message(embed=embed, view=None)
 
@@ -166,8 +166,8 @@ class MonedaView(View):
             else:
                 ganancia_oponente_final = ganancia_oponente_base
             
-            db.update_credits(duelo['creador_id'], ganancia_creador_final, "win", "moneda_duelo", f"Empate vs {duelo['oponente_nombre']}")
-            db.update_credits(duelo['oponente_id'], ganancia_oponente_final, "win", "moneda_duelo", f"Empate vs {duelo['creador_nombre']}")
+            db.update_saldo(duelo['creador_id'], ganancia_creador_final, "win", "moneda_duelo", f"Empate vs {duelo['oponente_nombre']}")
+            db.update_saldo(duelo['oponente_id'], ganancia_oponente_final, "win", "moneda_duelo", f"Empate vs {duelo['creador_nombre']}")
             
         elif ganador_creador:
             # Creador gana
@@ -179,8 +179,8 @@ class MonedaView(View):
             else:
                 ganancia_final = ganancia_base
                 
-            db.update_credits(duelo['creador_id'], ganancia_final, "win", "moneda_duelo", f"Ganó vs {duelo['oponente_nombre']}")
-            db.update_credits(duelo['oponente_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Perdió vs {duelo['creador_nombre']}")
+            db.update_saldo(duelo['creador_id'], ganancia_final, "win", "moneda_duelo", f"Ganó vs {duelo['oponente_nombre']}")
+            db.update_saldo(duelo['oponente_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Perdió vs {duelo['creador_nombre']}")
             
         elif ganador_oponente:
             # Oponente gana
@@ -192,13 +192,13 @@ class MonedaView(View):
             else:
                 ganancia_final = ganancia_base
                 
-            db.update_credits(duelo['oponente_id'], ganancia_final, "win", "moneda_duelo", f"Ganó vs {duelo['creador_nombre']}")
-            db.update_credits(duelo['creador_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Perdió vs {duelo['oponente_nombre']}")
+            db.update_saldo(duelo['oponente_id'], ganancia_final, "win", "moneda_duelo", f"Ganó vs {duelo['creador_nombre']}")
+            db.update_saldo(duelo['creador_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Perdió vs {duelo['oponente_nombre']}")
         else:
             # Nadie gana (ambos pierden)
             resultado_texto = "💥 **AMBOS PIERDEN!**"
-            db.update_credits(duelo['creador_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Ambos perdieron vs {duelo['oponente_nombre']}")
-            db.update_credits(duelo['oponente_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Ambos perdieron vs {duelo['creador_nombre']}")
+            db.update_saldo(duelo['creador_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Ambos perdieron vs {duelo['oponente_nombre']}")
+            db.update_saldo(duelo['oponente_id'], -duelo['apuesta'], "loss", "moneda_duelo", f"Ambos perdieron vs {duelo['creador_nombre']}")
 
         # Crear embed de resultado
         embed = discord.Embed(
@@ -254,7 +254,7 @@ class MonedaDueloView(View):
     @discord.ui.button(label="✅ Aceptar Duelo", style=discord.ButtonStyle.success, emoji="⚔️")
     async def aceptar_button(self, interaction: discord.Interaction, button: Button):
         # Verificar créditos del oponente
-        credits = db.get_credits(self.oponente_id)
+        credits = db.get_saldo(self.oponente_id)
         if credits < self.apuesta:
             await interaction.response.send_message("❌ No tienes suficientes créditos para aceptar este duelo.", ephemeral=True)
             return
@@ -325,7 +325,7 @@ class Moneda(commands.Cog):
             return
 
         # Verificar créditos
-        credits = db.get_credits(ctx.author.id)
+        credits = db.get_saldo(ctx.author.id)
         if credits < apuesta:
             await ctx.send(f"❌ No tienes suficientes créditos. Tu balance: {credits:,}")
             return
@@ -366,13 +366,13 @@ class Moneda(commands.Cog):
             return
 
         # Verificar créditos del creador
-        credits_creador = db.get_credits(ctx.author.id)
+        credits_creador = db.get_saldo(ctx.author.id)
         if credits_creador < apuesta:
             await ctx.send(f"❌ No tienes suficientes créditos. Tu balance: {credits_creador:,}")
             return
 
         # Verificar créditos del oponente
-        credits_oponente = db.get_credits(oponente.id)
+        credits_oponente = db.get_saldo(oponente.id)
         if credits_oponente < apuesta:
             await ctx.send(f"❌ {oponente.mention} no tiene suficientes créditos. Su balance: {credits_oponente:,}")
             return
