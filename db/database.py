@@ -97,3 +97,76 @@ class Database:
         except Exception as e:
             logger.error(f"Error en link_discord_to_profile: {e}")
             return False
+        
+    # ============================
+    # GET ESTADÍSTICAS
+    # ============================
+    def get_user_stats(self, discord_id: str) -> dict:
+        """
+        Obtiene estadísticas del perfil (saldo, juegos jugados, ganados, etc).
+        """
+        try:
+            # Asumo que las columnas games_played, games_won, etc. están en 'profiles'
+            # Si 'credits' es lo mismo que 'saldo', seleccionamos 'saldo'.
+            res = self.client.table("profiles")\
+                .select("saldo, games_played, games_won, total_winnings")\
+                .eq("discord_id", discord_id)\
+                .maybe_single()\
+                .execute()
+            
+            if res.data:
+                # Opcional: Si tu bot viejo busca la clave 'credits', mapeamos 'saldo' a 'credits'
+                stats = res.data
+                stats['credits'] = stats.pop('saldo', 0) # Renombrar para compatibilidad
+                return stats
+            
+            return {}
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo estadísticas: {e}")
+            return {}
+
+    # ============================
+    # GUARDAR BLACKJACK
+    # ============================
+    def save_blackjack_game(self, discord_id: str, bet_amount: int, result: str, payout: int, player_hand: list, dealer_hand: list):
+        """
+        Guarda el registro de la partida en la tabla 'blackjack_sessions'.
+        """
+        try:
+            # Preparar los datos
+            data = {
+                "user_id": discord_id,  # Asegúrate que en la tabla la columna se llame user_id o discord_id
+                "bet_amount": bet_amount,
+                "result": result,
+                "payout": payout,
+                "player_hand": str(player_hand), # Guardamos como string. Si usas JSONB en Supabase, puedes quitar str()
+                "dealer_hand": str(dealer_hand)
+            }
+
+            self.client.table("blackjack_sessions").insert(data).execute()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error guardando partida de blackjack: {e}")
+            # No hacemos raise para no interrumpir el flujo del juego si solo falla el log
+            return False
+
+    # ============================
+    # GET TODOS LOS USUARIOS
+    # ============================
+    def get_all_users(self) -> list:
+        """
+        Retorna una lista de todos los discord_ids registrados en profiles.
+        """
+        try:
+            # Traemos solo la columna discord_id de perfiles vinculados (donde discord_id no es null)
+            res = self.client.table("profiles")\
+                .select("discord_id")\
+                .neq("discord_id", "null")\
+                .execute()
+            
+            # Aplanamos la lista: de [{'discord_id': '123'}, ...] a ['123', ...]
+            users = [row['discord_id'] for row in res.data if row.get('discord_id')]
+            return users
+        except Exception as e:
+            logger.error(f"Error getting all users: {e}")
+            return []
